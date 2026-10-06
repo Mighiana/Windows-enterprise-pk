@@ -271,3 +271,100 @@ srv.socket = ctx.wrap_socket(srv.socket, server_side=True); srv.serve_forever()
         $hs.Error | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'AD CS audit: template risk (ESC1-ESC4)' {
+    BeforeAll {
+        function New-Ace([string] $Sid, [string] $Rights = 'ReadProperty, ExtendedRight', [string] $ObjectType = '0e10c968-78fb-11d2-90d4-00c04f79dc55', [string] $Principal = '') {
+            [pscustomobject]@{ Sid = $Sid; Principal = $Principal; Rights = $Rights; ObjectType = $ObjectType; Type = 'Allow' }
+        }
+        function New-Template {
+            param([string] $Name = 'T', [bool] $Published = $true, [bool] $Supplies = $false, [bool] $Approval = $false,
+                  [int] $Signatures = 0, [string[]] $Ekus = @('1.3.6.1.5.5.7.3.2'), [object[]] $Acl = @())
+            [pscustomobject]@{ Name = $Name; Published = $Published; EnrolleeSuppliesSubject = $Supplies; ManagerApproval = $Approval
+                               AuthorizedSignatures = $Signatures; Ekus = $Ekus; Acl = $Acl }
+        }
+    }
+    It 'classifies low-privileged SIDs' {
+        Test-LabLowPrivilegedSid 'S-1-5-11' | Should -BeTrue
+        Test-LabLowPrivilegedSid 'S-1-5-21-1111111111-2222222222-3333333333-513' | Should -BeTrue
+        Test-LabLowPrivilegedSid 'S-1-5-21-1111111111-2222222222-3333333333-512' | Should -BeFalse
+        Test-LabLowPrivilegedSid 'S-1-5-18' | Should -BeFalse
+    }
+    It 'flags ESC1 on a published template' {
+        $r = Test-LabTemplateRisk -Templates @(New-Template -Name 'VulnUser' -Supplies $true -Acl @(New-Ace 'S-1-5-21-1111111111-2222222222-3333333333-513' -Principal 'IRB\Domain Users'))
+        Get-Status $r "ESC1 template 'VulnUser'" | Should -Be 'FAIL'
+        ($r | Where-Object Check -Like 'ESC1*').Detail | Should -Match 'Domain Users'
+    }
+    It 'downgrades findings on unpublished templates to WARN' {
+        Get-Status (Test-LabTemplateRisk -Templates @(New-Template -Name 'Latent' -Published $false -Supplies $true -Acl @(New-Ace 'S-1-5-11'))) "ESC1 template 'Latent'" | Should -Be 'WARN'
+    }
+    It 'does not flag ESC1 when manager approval or authorised signatures gate issuance' {
+        Test-LabTemplateRisk -Templates @(
+            New-Template -Supplies $true -Approval $true -Acl @(New-Ace 'S-1-5-11')
+            New-Template -Supplies $true -Signatures 1 -Acl @(New-Ace 'S-1-5-11')
+        ) | Select-Object -ExpandProperty Status | Should -Be 'PASS'
+    }
+    It 'does not flag the default WebServer template (server auth only, admins enroll)' {
+        $r = Test-LabTemplateRisk -Templates @(New-Template -Name 'WebServer' -Supplies $true -Ekus @('1.3.6.1.5.5.7.3.1') -Acl @(New-Ace 'S-1-5-21-1111111111-2222222222-3333333333-512'))
+        $r.Status | Should -Be 'PASS'
+        $r.Detail | Should -Match '^1 templates reviewed'
+    }
+    It 'flags ESC2 for Any Purpose and for no EKU' {
+        $r = Test-LabTemplateRisk -Templates @(
+            New-Template -Name 'Any' -Ekus @('2.5.29.37.0') -Acl @(New-Ace 'S-1-1-0')
+            New-Template -Name 'None' -Ekus @() -Acl @(New-Ace 'S-1-1-0')
+        )
+        Get-Status $r "ESC2 template 'Any'" | Should -Be 'FAIL'
+        Get-Status $r "ESC2 template 'None'" | Should -Be 'FAIL'
+    }
+    It 'flags ESC3 for a Certificate Request Agent template' {
+        Get-Status (Test-LabTemplateRisk -Templates @(New-Template -Name 'Agent' -Ekus @('1.3.6.1.4.1.311.20.2.1') -Acl @(New-Ace 'S-1-5-21-1111111111-2222222222-3333333333-513'))) "ESC3 template 'Agent'" | Should -Be 'FAIL'
+    }
+    It 'flags ESC4 when low-privileged principals can rewrite the template' {
+        $acl = @(New-Ace 'S-1-5-11' -Rights 'ReadProperty, WriteDacl' -ObjectType '')
+        Get-Status (Test-LabTemplateRisk -Templates @(New-Template -Name 'Writable' -Ekus @('1.3.6.1.5.5.7.3.1') -Acl $acl)) "ESC4 template 'Writable'" | Should -Be 'FAIL'
+    }
+    It 'ignores deny ACEs and read-only rights' {
+        $acl = @(
+            [pscustomobject]@{ Sid = 'S-1-5-11'; Principal = ''; Rights = 'ExtendedRight'; ObjectType = '0e10c968-78fb-11d2-90d4-00c04f79dc55'; Type = 'Deny' }
+            New-Ace 'S-1-5-11' -Rights 'ReadProperty, GenericRead' -ObjectType ''
+        )
+        (Get-LabTemplateExposure -Acl $acl).Enroll | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'AD CS audit: CA configuration (ESC6, ESC8)' {
+    It 'fails ESC6 when EDITF_ATTRIBUTESUBJECTALTNAME2 is set and passes default flags' {
+        Get-Status (Test-LabCaConfigRisk -EditFlags (0x0011014E -bor 0x00040000) -WebEnrollment $null) 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' | Should -Be 'FAIL'
+        Get-Status (Test-LabCaConfigRisk -EditFlags 0x0011014E -WebEnrollment $null) 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' | Should -Be 'PASS'
+        Get-Status (Test-LabCaConfigRisk -EditFlags $null -WebEnrollment $null) 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' | Should -Be 'SKIP'
+    }
+    It 'grades web enrollment exposure' {
+        $c = 'ESC8 Web enrollment (/certsrv)'
+        Get-Status (Test-LabCaConfigRisk -EditFlags 0 -WebEnrollment ([pscustomobject]@{ Installed = $true; Http = $true })) $c | Should -Be 'FAIL'
+        Get-Status (Test-LabCaConfigRisk -EditFlags 0 -WebEnrollment ([pscustomobject]@{ Installed = $true; Http = $false })) $c | Should -Be 'WARN'
+        Get-Status (Test-LabCaConfigRisk -EditFlags 0 -WebEnrollment ([pscustomobject]@{ Installed = $false; Http = $false })) $c | Should -Be 'PASS'
+    }
+    It 'runs the full audit from collectors and degrades to SKIP when LDAP is unavailable' {
+        Mock -ModuleName PkiLab Get-LabAdcsTemplate { throw 'LDAP unavailable' }
+        Mock -ModuleName PkiLab Get-LabCaEditFlag { 0x0011014E }
+        Mock -ModuleName PkiLab Get-LabWebEnrollmentState { [pscustomobject]@{ Installed = $false; Http = $false } }
+        $r = Invoke-LabAdcsAudit -CaName 'IRB-ADCS-RootCA'
+        Get-Status $r 'Read certificate templates (LDAP)' | Should -Be 'SKIP'
+        @($r | Where-Object Status -EQ 'PASS').Count | Should -Be 2
+    }
+}
+
+Describe 'ConvertTo-LabHtmlReport' {
+    It 'renders a self-contained report with counts and HTML-encodes details' {
+        $res = @(
+            New-LabCheckResult 'CERT' 'Subject' 'PASS' 'CN=server.irb.local'
+            New-LabCheckResult 'ADCS' 'ESC1' 'FAIL' '<script>alert(1)</script>'
+        )
+        $html = ConvertTo-LabHtmlReport -Results $res -Banner 'SAMPLE'
+        $html | Should -Match '<b style="color:var\(--FAIL\)">FAIL</b>'
+        $html | Should -Match '&lt;script&gt;'
+        $html | Should -Not -Match '<script>'
+        $html | Should -Not -Match 'https?://'
+    }
+}

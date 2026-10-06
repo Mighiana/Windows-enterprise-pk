@@ -21,6 +21,9 @@
     .\verify-pki.ps1
 
 .EXAMPLE
+    .\verify-pki.ps1 -OutputFormat Html -OutFile .\pki-report.html
+
+.EXAMPLE
     .\verify-pki.ps1 -ExpectedIPv4 192.168.233.131 -OutputFormat Json > pki-report.json
 #>
 [CmdletBinding()]
@@ -34,7 +37,8 @@ param(
     [string] $ExpectedIPv4,
     [ValidateRange(0, 3650)] [int] $ExpiryWarningDays = 30,
     [switch] $CheckRevocation,
-    [ValidateSet('Console', 'Json')] [string] $OutputFormat = 'Console',
+    [ValidateSet('Console', 'Json', 'Html')] [string] $OutputFormat = 'Console',
+    [string] $OutFile = 'pki-report.html',
     [switch] $PassThru
 )
 
@@ -57,6 +61,10 @@ $results = @(
 
 if ($PassThru) {
     $results
+} elseif ($OutputFormat -eq 'Html') {
+    $html = ConvertTo-LabHtmlReport -Results $results -Title 'Windows Enterprise PKI lab verification' -Subtitle ('{0} - {1:u}' -f $ServerFqdn, (Get-Date).ToUniversalTime())
+    Set-Content -LiteralPath $OutFile -Value $html -Encoding UTF8
+    Write-Output "Wrote $OutFile"
 } elseif ($OutputFormat -eq 'Json') {
     $results | Select-Object Area, Check, Status, Detail | ConvertTo-Json -Depth 3
 } else {

@@ -604,11 +604,234 @@ function Get-LabBoundThumbprint {
     return $null
 }
 
+# ---------------------------------------------------------------------------
+# AD CS security audit (ESC1-4, ESC6, ESC8) - read-only, 2026 extension
+# ---------------------------------------------------------------------------
+
+$script:OidClientAuth     = '1.3.6.1.5.5.7.3.2'
+$script:OidPkinit         = '1.3.6.1.5.2.3.4'
+$script:OidSmartcardLogon = '1.3.6.1.4.1.311.20.2.2'
+$script:OidAnyPurpose     = '2.5.29.37.0'
+$script:OidRequestAgent   = '1.3.6.1.4.1.311.20.2.1'
+$script:AuthEkus          = @($script:OidClientAuth, $script:OidPkinit, $script:OidSmartcardLogon, $script:OidAnyPurpose)
+$script:RightEnroll       = '0e10c968-78fb-11d2-90d4-00c04f79dc55'
+$script:RightAutoEnroll   = 'a05b8cc2-17bc-4802-a710-e7c15ab866a2'
+$script:EmptyGuid         = '00000000-0000-0000-0000-000000000000'
+$script:EditfSan2         = 0x00040000
+
+function Test-LabLowPrivilegedSid {
+    <# Everyone, Anonymous, Authenticated Users, BUILTIN\Users, Domain Users, Domain Computers. #>
+    param([string] $Sid)
+    if (@('S-1-1-0', 'S-1-5-7', 'S-1-5-11', 'S-1-5-32-545') -contains $Sid) { return $true }
+    return ($Sid -match '^S-1-5-21-[\d-]+-(513|515)$')
+}
+
+function Get-LabTemplateExposure {
+    <#
+        Reduces a template ACL to the low-privileged principals that can enroll or modify it.
+        Deny ACEs are deliberately not subtracted: findings err on the side of review.
+    #>
+    param([AllowEmptyCollection()] [object[]] $Acl = @())
+    $enroll = @(); $write = @()
+    foreach ($ace in @($Acl)) {
+        if ($null -eq $ace -or $ace.Type -ne 'Allow' -or -not (Test-LabLowPrivilegedSid $ace.Sid)) { continue }
+        $who = if ($ace.Principal) { [string]$ace.Principal } else { [string]$ace.Sid }
+        $rights = [string]$ace.Rights
+        $obj = ([string]$ace.ObjectType).ToLowerInvariant()
+        $anyObject = ($obj -eq '' -or $obj -eq $script:EmptyGuid)
+        if ($rights -match 'GenericAll' -or ($rights -match 'ExtendedRight' -and ($anyObject -or $obj -eq $script:RightEnroll -or $obj -eq $script:RightAutoEnroll))) { $enroll += $who }
+        if ($rights -match 'GenericAll|GenericWrite|WriteDacl|WriteOwner' -or ($rights -match 'WriteProperty' -and $anyObject)) { $write += $who }
+    }
+    [pscustomobject]@{ Enroll = @($enroll | Select-Object -Unique); Write = @($write | Select-Object -Unique) }
+}
+
+function Test-LabTemplateRisk {
+    <#
+        Pure evaluator for certificate templates. Input objects:
+        Name, Published, EnrolleeSuppliesSubject, ManagerApproval, AuthorizedSignatures, Ekus[], Acl[]
+        (Acl entries: Sid, Principal, Rights, ObjectType, Type).
+    #>
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Templates)
+    $a = 'ADCS'; $out = @()
+    foreach ($t in @($Templates)) {
+        if ($null -eq $t) { continue }
+        $exp = Get-LabTemplateExposure -Acl $t.Acl
+        $ekus = @($t.Ekus | Where-Object { $_ })
+        $status = if ($t.Published) { 'FAIL' } else { 'WARN' }
+        $where = if ($t.Published) { 'published on a CA' } else { 'not published (latent)' }
+        $ungated = (-not $t.ManagerApproval) -and ([int]$t.AuthorizedSignatures -eq 0)
+        $enrollers = $exp.Enroll -join ', '
+        if ($ungated -and $exp.Enroll.Count -gt 0) {
+            $authCapable = ($ekus.Count -eq 0) -or (@($ekus | Where-Object { $script:AuthEkus -contains $_ }).Count -gt 0)
+            if ($t.EnrolleeSuppliesSubject -and $authCapable) {
+                $out += New-LabCheckResult $a "ESC1 template '$($t.Name)'" $status "Requester supplies subject/SAN + authentication EKU; enrollable by $enrollers; no approval; $where. Impersonation of any user (ATT&CK T1649)"
+            }
+            if ($ekus.Count -eq 0 -or $ekus -contains $script:OidAnyPurpose) {
+                $out += New-LabCheckResult $a "ESC2 template '$($t.Name)'" $status "Any Purpose / no EKU; enrollable by $enrollers; no approval; $where (ATT&CK T1649)"
+            }
+            if ($ekus -contains $script:OidRequestAgent) {
+                $out += New-LabCheckResult $a "ESC3 template '$($t.Name)'" $status "Certificate Request Agent EKU; enrollable by $enrollers; enroll on behalf of others; $where (ATT&CK T1649)"
+            }
+        }
+        if ($exp.Write.Count -gt 0) {
+            $out += New-LabCheckResult $a "ESC4 template '$($t.Name)'" $status ("{0} can modify the template ACL/settings; $where (ATT&CK T1649)" -f ($exp.Write -join ', '))
+        }
+    }
+    if ($out.Count -eq 0) {
+        $out += New-LabCheckResult $a 'Template exposure (ESC1-ESC4)' 'PASS' ('{0} templates reviewed; none enrollable or writable by low-privileged principals in a dangerous configuration' -f @($Templates).Count)
+    }
+    $out
+}
+
+function Test-LabCaConfigRisk {
+    param([object] $EditFlags, [object] $WebEnrollment)
+    $a = 'ADCS'
+    if ($null -eq $EditFlags) {
+        New-LabCheckResult $a 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' 'SKIP' 'CA policy EditFlags not readable (run on the CA host)'
+    } elseif (([int64]$EditFlags -band $script:EditfSan2) -ne 0) {
+        New-LabCheckResult $a 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' 'FAIL' 'CA honours requester-supplied SANs on every template. Fix: certutil -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2 (ATT&CK T1649)'
+    } else {
+        New-LabCheckResult $a 'ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2' 'PASS' ('Not set (EditFlags 0x{0:X})' -f [int64]$EditFlags)
+    }
+    if ($null -eq $WebEnrollment) {
+        New-LabCheckResult $a 'ESC8 Web enrollment (/certsrv)' 'SKIP' 'IIS configuration not readable'
+    } elseif (-not $WebEnrollment.Installed) {
+        New-LabCheckResult $a 'ESC8 Web enrollment (/certsrv)' 'PASS' 'AD CS Web Enrollment is not installed'
+    } elseif ($WebEnrollment.Http) {
+        New-LabCheckResult $a 'ESC8 Web enrollment (/certsrv)' 'FAIL' '/certsrv is reachable over HTTP: NTLM relay to the CA can mint certificates. Require HTTPS + Extended Protection (ATT&CK T1557, T1649)'
+    } else {
+        New-LabCheckResult $a 'ESC8 Web enrollment (/certsrv)' 'WARN' 'HTTPS only; confirm Extended Protection for Authentication is required and NTLM is disabled where possible'
+    }
+}
+
+function Get-LabFirstValue {
+    param($Values, $Default = $null)
+    if ($null -ne $Values -and @($Values).Count -gt 0) { return @($Values)[0] }
+    $Default
+}
+
+function Get-LabAdcsTemplate {
+    <# Collector: reads templates and their ACLs from the AD configuration partition over LDAP. #>
+    [CmdletBinding()]
+    param()
+    $cfg = [string](Get-LabFirstValue ([adsi]'LDAP://RootDSE').Properties['configurationNamingContext'])
+    $pks = "CN=Public Key Services,CN=Services,$cfg"
+    $published = @{}
+    $es = New-Object System.DirectoryServices.DirectorySearcher([adsi]"LDAP://CN=Enrollment Services,$pks", '(objectClass=pKIEnrollmentService)')
+    foreach ($r in $es.FindAll()) { foreach ($n in $r.Properties['certificatetemplates']) { $published[[string]$n] = $true } }
+    $ts = New-Object System.DirectoryServices.DirectorySearcher([adsi]"LDAP://CN=Certificate Templates,$pks", '(objectClass=pKICertificateTemplate)')
+    foreach ($r in $ts.FindAll()) {
+        $p = $r.Properties
+        $name = [string](Get-LabFirstValue $p['name'])
+        $acl = @()
+        foreach ($ace in $r.GetDirectoryEntry().ObjectSecurity.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+            $sid = $ace.IdentityReference.Value
+            $principal = $sid
+            try { $principal = $ace.IdentityReference.Translate([System.Security.Principal.NTAccount]).Value } catch { Write-Verbose "Unresolved SID $sid" }
+            $acl += [pscustomobject]@{ Sid = $sid; Principal = $principal; Rights = [string]$ace.ActiveDirectoryRights; ObjectType = [string]$ace.ObjectType; Type = [string]$ace.AccessControlType }
+        }
+        $ekus = @($p['pkiextendedkeyusage']) + @($p['mspki-certificate-application-policy']) | Where-Object { $_ } | ForEach-Object { [string]$_ } | Select-Object -Unique
+        [pscustomobject]@{
+            Name                    = $name
+            Published               = $published.ContainsKey($name)
+            EnrolleeSuppliesSubject = (([int](Get-LabFirstValue $p['mspki-certificate-name-flag'] 0)) -band 1) -ne 0
+            ManagerApproval         = (([int](Get-LabFirstValue $p['mspki-enrollment-flag'] 0)) -band 2) -ne 0
+            AuthorizedSignatures    = [int](Get-LabFirstValue $p['mspki-ra-signature'] 0)
+            Ekus                    = @($ekus)
+            Acl                     = $acl
+        }
+    }
+}
+
+function Get-LabCaEditFlag {
+    param([Parameter(Mandatory)] [string] $CaName)
+    $path = 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration\' + $CaName + '\PolicyModules\CertificateAuthority_MicrosoftDefault.Policy'
+    Get-LabRegistryValue -Path $path -Name 'EditFlags'
+}
+
+function Get-LabWebEnrollmentState {
+    try { Import-Module WebAdministration -ErrorAction Stop } catch { return $null }
+    $app = Get-WebApplication -Name 'CertSrv' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $app) { return [pscustomobject]@{ Installed = $false; Http = $false } }
+    $site = 'Default Web Site'
+    if ("$($app.ItemXPath)" -match "@name='([^']+)'") { $site = $Matches[1] }
+    $http = @(Get-WebBinding -Name $site -Protocol http -ErrorAction SilentlyContinue).Count -gt 0
+    [pscustomobject]@{ Installed = $true; Http = $http }
+}
+
+function Invoke-LabAdcsAudit {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $CaName)
+    try {
+        $templates = @(Get-LabAdcsTemplate)
+        New-LabCheckResult 'ADCS' 'Read certificate templates (LDAP)' 'PASS' ('{0} templates, {1} published' -f $templates.Count, @($templates | Where-Object Published).Count)
+        Test-LabTemplateRisk -Templates $templates
+    } catch {
+        New-LabCheckResult 'ADCS' 'Read certificate templates (LDAP)' 'SKIP' $_.Exception.Message
+    }
+    $flags = $null; try { $flags = Get-LabCaEditFlag -CaName $CaName } catch { $flags = $null }
+    $web = $null; try { $web = Get-LabWebEnrollmentState } catch { $web = $null }
+    Test-LabCaConfigRisk -EditFlags $flags -WebEnrollment $web
+}
+
+# ---------------------------------------------------------------------------
+# HTML report (self-contained, no external assets)
+# ---------------------------------------------------------------------------
+
+function ConvertTo-LabHtmlReport {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Results,
+        [string] $Title = 'Windows Enterprise PKI lab verification',
+        [string] $Subtitle = '',
+        [string] $Banner = ''
+    )
+    $enc = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+    $count = @{}
+    foreach ($s in 'PASS', 'WARN', 'FAIL', 'SKIP') { $count[$s] = @($Results | Where-Object Status -EQ $s).Count }
+    $verdict = if ($count.FAIL -gt 0) { 'FAIL' } elseif ($count.WARN -gt 0) { 'WARN' } else { 'PASS' }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append(@"
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>$(& $enc $Title)</title><style>
+:root{--ink:#111;--mut:#666;--line:#d8d8d8;--bg:#fafafa;--PASS:#0a7d3e;--WARN:#a86400;--FAIL:#b3261e;--SKIP:#777}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "DejaVu Sans Mono",Consolas,"JetBrains Mono",monospace}
+main{max-width:1100px;margin:0 auto;padding:32px 28px 48px}h1{font-size:20px;letter-spacing:.5px;margin:0 0 4px;text-transform:uppercase}
+.sub{color:var(--mut);margin:0 0 18px}.banner{border:1.5px dashed var(--ink);padding:8px 12px;margin:0 0 18px;font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 0 26px}.tile{background:#fff;border:1.6px solid var(--ink);padding:10px 12px}
+.tile b{display:block;font-size:26px}.tile span{color:var(--mut);font-size:11px;letter-spacing:1.5px}
+.v{border-width:2.6px}.v b{font-size:22px}h2{font-size:12px;letter-spacing:2px;color:var(--mut);margin:24px 0 8px}
+table{width:100%;border-collapse:collapse;background:#fff;border:1.6px solid var(--ink)}td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
+td.s{width:70px}td.c{width:36%;font-weight:700}td.d{color:#333;word-break:break-word}
+.pill{display:inline-block;min-width:48px;text-align:center;color:#fff;font-weight:700;font-size:11px;padding:2px 6px}
+.PASS{background:var(--PASS)}.WARN{background:var(--WARN)}.FAIL{background:var(--FAIL)}.SKIP{background:var(--SKIP)}
+footer{margin-top:22px;color:var(--mut);font-size:12px}@media(max-width:720px){.tiles{grid-template-columns:repeat(2,1fr)}td.c{width:auto}}
+</style></head><body><main>
+<h1>$(& $enc $Title)</h1><p class="sub">$(& $enc $Subtitle)</p>
+"@)
+    if ($Banner) { [void]$sb.Append("<div class=`"banner`">$(& $enc $Banner)</div>") }
+    [void]$sb.Append("<div class=`"tiles`"><div class=`"tile v`" style=`"border-color:var(--$verdict)`"><span>VERDICT</span><b style=`"color:var(--$verdict)`">$verdict</b></div>")
+    foreach ($s in 'PASS', 'WARN', 'FAIL', 'SKIP') { [void]$sb.Append("<div class=`"tile`"><span>$s</span><b style=`"color:var(--$s)`">$($count[$s])</b></div>") }
+    [void]$sb.Append('</div>')
+    foreach ($group in ($Results | Group-Object Area)) {
+        [void]$sb.Append("<h2>$(& $enc $group.Name)</h2><table>")
+        foreach ($r in $group.Group) {
+            [void]$sb.Append("<tr><td class=`"s`"><span class=`"pill $($r.Status)`">$($r.Status)</span></td><td class=`"c`">$(& $enc $r.Check)</td><td class=`"d`">$(& $enc $r.Detail)</td></tr>")
+        }
+        [void]$sb.Append('</table>')
+    }
+    [void]$sb.Append('<footer>Generated by the read-only 2026 reproducibility tooling of windows-enterprise-pki-lab. No private keys are read or exported.</footer></main></body></html>')
+    $sb.ToString()
+}
+
 Export-ModuleMember -Function @(
     'New-LabCheckResult', 'Select-LabSigningRoot', 'Format-LabCheckResult', 'Write-LabSummary', 'Test-LabIsWindows',
     'Get-LabStoreCertificate', 'Test-LabRegistryKey', 'Get-LabRegistryValue',
     'Get-LabCommonName', 'Get-LabSanDnsName', 'Test-LabHasServerAuthEku', 'Test-LabSignedBy',
     'Find-LabRootCertificate', 'Find-LabServerCertificate', 'Test-LabServerCertificate', 'Test-LabRootCertificate',
     'Invoke-LabDomainCheck', 'Invoke-LabCaCheck', 'Invoke-LabTrustCheck', 'Invoke-LabCertificateCheck',
-    'Get-LabIisHttpsBinding', 'Get-LabBoundThumbprint', 'Invoke-LabTlsHandshake', 'Test-LabTlsResult', 'Invoke-LabIisTlsCheck'
+    'Get-LabIisHttpsBinding', 'Get-LabBoundThumbprint', 'Invoke-LabTlsHandshake', 'Test-LabTlsResult', 'Invoke-LabIisTlsCheck',
+    'Test-LabLowPrivilegedSid', 'Get-LabTemplateExposure', 'Test-LabTemplateRisk', 'Test-LabCaConfigRisk',
+    'Get-LabAdcsTemplate', 'Get-LabCaEditFlag', 'Get-LabWebEnrollmentState', 'Invoke-LabAdcsAudit', 'ConvertTo-LabHtmlReport'
 )

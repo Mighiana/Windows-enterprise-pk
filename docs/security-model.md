@@ -48,3 +48,14 @@ checked by the 2026 `verify-pki.ps1`:
 | Auto-enrollment, renewal and expiry monitoring | Not implemented |
 | HTTP → HTTPS redirect, HSTS, cipher-suite and protocol hardening | Not implemented (`http :80` remained bound) |
 | CA role separation, auditing, template ACL review (e.g. ESC-style misconfigurations) | Not assessed |
+
+## ATT&CK mapping (2026 extension)
+
+| Technique | How it applies to this design | Control / check |
+|---|---|---|
+| [T1649](https://attack.mitre.org/techniques/T1649/) Steal or Forge Authentication Certificates | Misconfigured templates or CA flags let a low-privileged user request a certificate for another identity (ESC1-ESC4, ESC6) | `scripts/audit-adcs.ps1`; CA audit events 4886/4887 |
+| [T1557](https://attack.mitre.org/techniques/T1557/) Adversary-in-the-Middle | NTLM relay to AD CS Web Enrollment over HTTP (ESC8); TLS interception with an untrusted certificate | `audit-adcs.ps1` ESC8; client-side chain validation in `verify-iis-tls.ps1` |
+| [T1553.004](https://attack.mitre.org/techniques/T1553/004/) Subvert Trust Controls: Install Root Certificate | The same GPO path that distributes `IRB-ADCS-RootCA` can push a rogue root to every domain computer if its edit rights are too broad | Restrict edit rights on `IRB Root CA Trust`; `verify-trust.ps1` reports which store delivered the root |
+
+The audit evaluates ACLs conservatively: it does not subtract Deny ACEs. A finding means "review
+this template", not "exploitation confirmed". Background: SpecterOps, *Certified Pre-Owned* (2021).

@@ -97,3 +97,14 @@ The INF requests template `WebServer` (a 2026 choice; override with `-Template`)
 ```
 
 Exit code `0` = no FAIL, `1` = at least one FAIL, `2` = not running on Windows.
+
+## Optional: AD CS security audit (read-only, 2026)
+
+```powershell
+.\scripts\audit-adcs.ps1                                   # console, exit 1 on any FAIL
+.\scripts\audit-adcs.ps1 -OutputFormat Html -OutFile .\adcs-audit.html
+.\scripts\verify-pki.ps1 -OutputFormat Html -OutFile .\pki-report.html
+```
+
+Both scripts only read LDAP, the registry, certificate stores and IIS configuration. Generated
+reports are git-ignored.
