@@ -23,3 +23,7 @@ testResults*.xml
 Thumbs.db
 .DS_Store
 .vscode/
+
+# Generated HTML reports
+pki-report*.html
+adcs-audit*.html
