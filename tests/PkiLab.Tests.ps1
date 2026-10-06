@@ -218,9 +218,10 @@ Describe 'Invoke-LabTlsHandshake (live local TLS server)' -Skip:(-not (Get-Comma
         Set-Content (Join-Path $dir 'key.pem') (& $pem $rsa.ExportPkcs8PrivateKey() 'PRIVATE KEY')
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0); $listener.Start()
         $script:TlsPort = $listener.LocalEndpoint.Port; $listener.Stop()
+        $pyDir = $dir -replace '\\', '/'
         $py = @"
 import http.server, ssl, sys
-ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain('$dir/cert.pem', '$dir/key.pem')
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain('$pyDir/cert.pem', '$pyDir/key.pem')
 srv = http.server.HTTPServer(('127.0.0.1', $TlsPort), http.server.SimpleHTTPRequestHandler)
 srv.socket = ctx.wrap_socket(srv.socket, server_side=True); srv.serve_forever()
 "@
@@ -236,6 +237,7 @@ srv.socket = ctx.wrap_socket(srv.socket, server_side=True); srv.serve_forever()
     }
     It 'completes the handshake, captures the served thumbprint and reports the untrusted test root' {
         $hs = Invoke-LabTlsHandshake -HostName 'localhost' -Port $TlsPort
+        $hs.Error | Should -BeNullOrEmpty
         $hs.Connected | Should -BeTrue
         $hs.Protocol | Should -Match 'Tls1[23]'
         $hs.Thumbprint | Should -Be $TlsLeaf.Thumbprint
