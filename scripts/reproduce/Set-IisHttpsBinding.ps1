@@ -20,22 +20,30 @@ param(
     [string] $ServerFqdn = 'server.irb.local',
     [string] $SiteName = 'Default Web Site',
     [int] $Port = 443,
-    [string] $Thumbprint
+    [string] $Thumbprint,
+    [string] $CaName = 'IRB-ADCS-RootCA'
 )
 
 Import-Module (Join-Path $PSScriptRoot '../lib/PkiLab.psm1') -Force
 Import-Module WebAdministration -ErrorAction Stop
 
+$now = Get-Date
+$isUsable = {
+    param($c)
+    $c.HasPrivateKey -and $c.NotBefore -le $now -and $c.NotAfter -gt $now -and
+    (Get-LabCommonName $c.Issuer) -eq $CaName -and
+    @(Get-LabSanDnsName $c) -contains $ServerFqdn -and (Test-LabHasServerAuthEku $c)
+}
 $certs = @(Get-LabStoreCertificate -StoreName My)
 if ($Thumbprint) {
     $cert = $certs | Where-Object { $_.Thumbprint -eq $Thumbprint } | Select-Object -First 1
+    if ($cert -and -not (& $isUsable $cert)) {
+        throw "Certificate $Thumbprint is not usable for https://${ServerFqdn}: needs a private key, current validity, issuer $CaName, SAN $ServerFqdn and Server Authentication EKU."
+    }
 } else {
-    $now = Get-Date
-    $cert = $certs |
-        Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt $now -and (Get-LabSanDnsName $_) -contains $ServerFqdn } |
-        Sort-Object NotAfter -Descending | Select-Object -First 1
+    $cert = $certs | Where-Object { & $isUsable $_ } | Sort-Object NotAfter -Descending | Select-Object -First 1
 }
-if ($null -eq $cert) { throw "No usable certificate for $ServerFqdn in LocalMachine\My." }
+if ($null -eq $cert) { throw "No usable certificate for $ServerFqdn issued by $CaName in LocalMachine\My." }
 Write-Verbose ('Using certificate {0} ({1})' -f $cert.Thumbprint, $cert.Subject)
 
 $binding = Get-WebBinding -Name $SiteName -Protocol https -Port $Port -HostHeader $ServerFqdn -ErrorAction SilentlyContinue

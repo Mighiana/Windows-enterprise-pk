@@ -35,5 +35,6 @@ if ($missing.Count -eq 0) {
 if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Install-WindowsFeature $($missing -join ', ') -IncludeManagementTools")) {
     $result = Install-WindowsFeature -Name $missing -IncludeManagementTools
     $result | Select-Object Success, RestartNeeded, ExitCode
+    if (-not $result.Success) { throw "Install-WindowsFeature failed (ExitCode $($result.ExitCode)). Fix the error before continuing." }
     if ("$($result.RestartNeeded)" -eq 'Yes') { Write-Warning 'A restart is required before continuing.' }
 }

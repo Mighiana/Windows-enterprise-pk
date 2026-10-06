@@ -59,6 +59,7 @@ and hash algorithm were not recorded; SHA256/2048 is a 2026 choice.
 ### 5. Trust GPO (MANUAL)
 
 ```powershell
+New-Item -ItemType Directory -Force C:\pki | Out-Null
 New-GPO -Name 'IRB Root CA Trust' | New-GPLink -Target 'DC=irb,DC=local' -LinkEnabled Yes
 certutil -ca.cert C:\pki\IRB-ADCS-RootCA.cer     # public certificate only
 ```

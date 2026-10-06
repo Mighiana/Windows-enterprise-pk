@@ -59,6 +59,8 @@ CertificateTemplate = $Template
 "@
 
 if ($PSCmdlet.ShouldProcess($OutFile, 'Write certreq INF')) {
+    $parent = Split-Path -Parent $OutFile
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Set-Content -LiteralPath $OutFile -Value $inf -Encoding ASCII
     $base = [System.IO.Path]::ChangeExtension($OutFile, $null).TrimEnd('.')
     Write-Output "Wrote $OutFile"

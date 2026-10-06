@@ -206,6 +206,21 @@ function Test-LabServerCertificate {
     }
 }
 
+function Select-LabSigningRoot {
+    <# Picks the trusted root that actually signed the leaf (handles renewed roots that reuse the CA name). #>
+    param(
+        [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate,
+        [AllowEmptyCollection()] [object[]] $Roots = @()
+    )
+    if (-not $Roots -or $Roots.Count -eq 0) { return $null }
+    if ($Certificate) {
+        foreach ($root in $Roots) {
+            if ($Certificate.Issuer -eq $root.Subject -and (Test-LabSignedBy -Certificate $Certificate -Issuer $root)) { return $root }
+        }
+    }
+    $Roots[0]
+}
+
 function Test-LabSignedBy {
     <# Builds a chain using only the supplied issuer as an extra store; no network, no revocation. #>
     param(
@@ -414,8 +429,8 @@ function Invoke-LabCertificateCheck {
         [string] $Thumbprint,
         [int] $ExpiryWarningDays = 30
     )
-    $root = $null; $mine = @()
-    try { $root = Find-LabRootCertificate -Certificates (Get-LabStoreCertificate -StoreName Root) -CaName $CaName | Select-Object -First 1 } catch { $root = $null }
+    $roots = @(); $mine = @()
+    try { $roots = @(Find-LabRootCertificate -Certificates (Get-LabStoreCertificate -StoreName Root) -CaName $CaName) } catch { $roots = @() }
     try { $mine = @(Get-LabStoreCertificate -StoreName My) } catch {
         New-LabCheckResult 'CERT' 'Read LocalMachine\My' 'FAIL' $_.Exception.Message
         return
@@ -430,6 +445,7 @@ function Invoke-LabCertificateCheck {
     if ($candidates.Count -gt 1) {
         New-LabCheckResult 'CERT' 'Duplicate server certificates' 'WARN' ('{0} certificates for {1}; evaluating {2}' -f $candidates.Count, $ServerFqdn, $(if ($cert) { $cert.Thumbprint } else { 'none' }))
     }
+    $root = Select-LabSigningRoot -Certificate $cert -Roots $roots
     Test-LabServerCertificate -Certificate $cert -Fqdn $ServerFqdn -CaName $CaName -RootCertificate $root -ExpiryWarningDays $ExpiryWarningDays
 }
 
@@ -445,7 +461,7 @@ function Invoke-LabTlsHandshake {
         [int] $TimeoutMs = 5000,
         [switch] $CheckRevocation
     )
-    $r = [ordered]@{ Connected = $false; PolicyErrors = $null; ChainStatus = @(); Thumbprint = $null; Protocol = $null; HttpStatus = $null; Error = $null }
+    $r = [ordered]@{ Connected = $false; PolicyErrors = $null; ChainStatus = @(); Thumbprint = $null; Protocol = $null; HttpStatus = $null; Error = $null; RevocationChecked = [bool]$CheckRevocation }
     $state = @{ Errors = $null; Chain = @(); Cert = $null }
     $client = New-Object System.Net.Sockets.TcpClient
     try {
@@ -510,6 +526,8 @@ function Test-LabTlsResult {
 
     if ($Handshake.PolicyErrors -eq 'None') {
         New-LabCheckResult $a 'Client trusts certificate (no warning)' 'PASS' 'Name and chain validated by the Windows trust store'
+        if ($Handshake.PSObject.Properties['RevocationChecked'] -and $Handshake.RevocationChecked) { New-LabCheckResult $a 'Revocation status' 'PASS' 'CRL/OCSP checked during chain validation' }
+        else { New-LabCheckResult $a 'Revocation status' 'SKIP' 'Not checked; a revoked certificate would still pass. Rerun with -CheckRevocation' }
     } else {
         $chain = @($Handshake.ChainStatus | Where-Object { $_ -ne 'NoError' })
         $detail = $Handshake.PolicyErrors
@@ -587,7 +605,7 @@ function Get-LabBoundThumbprint {
 }
 
 Export-ModuleMember -Function @(
-    'New-LabCheckResult', 'Format-LabCheckResult', 'Write-LabSummary', 'Test-LabIsWindows',
+    'New-LabCheckResult', 'Select-LabSigningRoot', 'Format-LabCheckResult', 'Write-LabSummary', 'Test-LabIsWindows',
     'Get-LabStoreCertificate', 'Test-LabRegistryKey', 'Get-LabRegistryValue',
     'Get-LabCommonName', 'Get-LabSanDnsName', 'Test-LabHasServerAuthEku', 'Test-LabSignedBy',
     'Find-LabRootCertificate', 'Find-LabServerCertificate', 'Test-LabServerCertificate', 'Test-LabRootCertificate',

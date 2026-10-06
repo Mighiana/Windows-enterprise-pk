@@ -115,6 +115,20 @@ Describe 'Test-LabServerCertificate' {
     }
 }
 
+Describe 'Select-LabSigningRoot' {
+    It 'picks the root that signed the leaf when a renewed root reuses the CA name' {
+        $old = New-TestRoot; $renewed = New-TestRoot
+        $leaf = New-TestLeaf -Root $old
+        (Select-LabSigningRoot -Certificate $leaf -Roots @($renewed, $old)).Thumbprint | Should -Be $old.Thumbprint
+        Get-Status (Test-LabServerCertificate -Certificate $leaf -Fqdn 'server.irb.local' -CaName 'IRB-ADCS-RootCA' -RootCertificate (Select-LabSigningRoot -Certificate $leaf -Roots @($renewed, $old))) 'Signed by trusted root' | Should -Be 'PASS'
+    }
+    It 'falls back to the first root and returns nothing without roots' {
+        $a = New-TestRoot; $b = New-TestRoot
+        (Select-LabSigningRoot -Certificate (New-TestLeaf -Root (New-TestRoot)) -Roots @($a, $b)).Thumbprint | Should -Be $a.Thumbprint
+        Select-LabSigningRoot -Certificate $null -Roots @() | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Find-LabServerCertificate / Find-LabRootCertificate' {
     It 'returns the newest matching certificate first and ignores unrelated ones' {
         $older = New-TestLeaf -Root $Root -DaysAfter 100
@@ -183,8 +197,12 @@ Describe 'Invoke-LabCaCheck' {
 
 Describe 'Test-LabTlsResult' {
     It 'passes a trusted handshake whose certificate matches the IIS binding' {
-        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'None'; ChainStatus = @(); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null }
+        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'None'; ChainStatus = @(); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null; RevocationChecked = $true }
         Test-LabTlsResult -Handshake $hs -Url 'https://server.irb.local:443' -ExpectedThumbprint 'AB' | Where-Object Status -NE 'PASS' | Should -BeNullOrEmpty
+    }
+    It 'does not report revocation as passed when it was not checked' {
+        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'None'; ChainStatus = @(); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null; RevocationChecked = $false }
+        Get-Status (Test-LabTlsResult -Handshake $hs -Url 'u') 'Revocation status' | Should -Be 'SKIP'
     }
     It 'fails an untrusted chain or name mismatch and reports why' {
         $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'RemoteCertificateChainErrors'; ChainStatus = @('UntrustedRoot'); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null }

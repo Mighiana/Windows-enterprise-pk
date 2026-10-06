@@ -55,9 +55,9 @@ $results = @(
     Invoke-LabIisTlsCheck -ServerFqdn $ServerFqdn -SiteName $SiteName -Port $Port -CheckRevocation:$CheckRevocation
 )
 
-if ($PassThru) { return $results }
-
-if ($OutputFormat -eq 'Json') {
+if ($PassThru) {
+    $results
+} elseif ($OutputFormat -eq 'Json') {
     $results | Select-Object Area, Check, Status, Detail | ConvertTo-Json -Depth 3
 } else {
     Write-Host ("Windows Enterprise PKI lab verification - {0} ({1:u})" -f $ServerFqdn, (Get-Date).ToUniversalTime())
