@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="830" viewBox="0 0 1200 830" font-family="'DejaVu Sans Mono', Consolas, 'JetBrains Mono', monospace">
+  <title>Windows Enterprise PKI lab architecture - single Windows Server 2022 VM, irb.local</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#111"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0a7d3e"/></marker>
+    <style>
+      .box{fill:#fff;stroke:#111;stroke-width:1.6}
+      .key{fill:#fff;stroke:#111;stroke-width:2.6}
+      .ok{fill:#f2faf5;stroke:#0a7d3e;stroke-width:2.2}
+      .h{font-size:15px;font-weight:700;fill:#111;letter-spacing:.5px}
+      .t{font-size:12.5px;fill:#222}
+      .m{font-size:11.5px;fill:#666}
+      .tag{font-size:10.5px;fill:#666;letter-spacing:1.5px}
+      .lbl{font-size:11.5px;fill:#111;font-weight:700}
+      .ln{fill:none;stroke:#111;stroke-width:1.6}
+      .lg{fill:none;stroke:#0a7d3e;stroke-width:2}
+      .pill{fill:#fff;stroke:#111;stroke-width:1.4}
+    </style>
+  </defs>
+  <rect width="1200" height="830" fill="#fafafa"/>
+
+  <text x="30" y="44" class="h" font-size="20">WINDOWS ENTERPRISE PKI &amp; CERTIFICATE TRUST LAB</text>
+  <text x="30" y="68" class="m">Original lab, May 2026 · single Windows Server 2022 VM (VMware) · AD domain irb.local · all roles on one host</text>
+
+  <!-- host frame -->
+  <rect x="30" y="92" width="1140" height="586" fill="none" stroke="#111" stroke-width="1.2" stroke-dasharray="6 4"/>
+  <rect x="30" y="92" width="470" height="26" fill="#111"/>
+  <text x="42" y="110" font-size="12.5" fill="#fff" font-weight="700">server.irb.local · Windows Server 2022 · domain controller</text>
+
+  <!-- column 1 -->
+  <rect x="60" y="150" width="300" height="104" class="box"/>
+  <text x="74" y="172" class="tag">IDENTITY</text>
+  <text x="74" y="194" class="h">AD DS</text>
+  <text x="74" y="216" class="t">forest / domain irb.local</text>
+  <text x="74" y="236" class="m">server promoted to DC</text>
+
+  <rect x="60" y="282" width="300" height="118" class="box"/>
+  <text x="74" y="304" class="tag">NAME RESOLUTION</text>
+  <text x="74" y="326" class="h">DNS</text>
+  <text x="74" y="348" class="t">zone irb.local (AD-integrated)</text>
+  <text x="74" y="368" class="t">A  server → static IPv4</text>
+  <text x="74" y="388" class="m">name clients use = name in the SAN</text>
+
+  <rect x="60" y="428" width="300" height="214" class="key"/>
+  <text x="74" y="450" class="tag">TRUST DISTRIBUTION</text>
+  <text x="74" y="472" class="h">GROUP POLICY</text>
+  <text x="74" y="494" class="t">GPO "IRB Root CA Trust"</text>
+  <text x="74" y="512" class="t">linked to irb.local · enabled</text>
+  <text x="74" y="538" class="m">Computer Configuration › Policies ›</text>
+  <text x="74" y="554" class="m">Windows Settings › Security Settings ›</text>
+  <text x="74" y="570" class="m">Public Key Policies ›</text>
+  <text x="74" y="586" class="m">Trusted Root Certification Authorities</text>
+  <text x="74" y="612" class="t">contains: IRB-ADCS-RootCA</text>
+  <text x="74" y="630" class="m">applies to domain computers</text>
+
+  <!-- column 2 -->
+  <rect x="450" y="150" width="300" height="150" class="key"/>
+  <text x="464" y="172" class="tag">AD CS · ENTERPRISE ROOT CA</text>
+  <text x="464" y="194" class="h">IRB-ADCS-RootCA</text>
+  <text x="464" y="216" class="t">self-signed root</text>
+  <text x="464" y="236" class="t">valid until 2036-05-25</text>
+  <text x="464" y="256" class="m">integrated with AD DS</text>
+  <text x="464" y="276" class="m">CertSvc running</text>
+
+  <rect x="450" y="392" width="300" height="190" class="key"/>
+  <text x="464" y="414" class="tag">MACHINE CERTIFICATE</text>
+  <text x="464" y="436" class="h">server.irb.local</text>
+  <text x="464" y="458" class="t">Subject  CN=server.irb.local</text>
+  <text x="464" y="478" class="t">SAN      DNS=server.irb.local</text>
+  <text x="464" y="498" class="t">Issuer   IRB-ADCS-RootCA</text>
+  <text x="464" y="518" class="t">Valid    2026-05-25 → 2028-05-24</text>
+  <text x="464" y="542" class="m">LocalMachine\My · private key</text>
+  <text x="464" y="558" class="m">stays on the server (never exported)</text>
+
+  <!-- column 3 -->
+  <rect x="840" y="150" width="300" height="130" class="box"/>
+  <text x="854" y="172" class="tag">WEB SERVER</text>
+  <text x="854" y="194" class="h">IIS · Default Web Site</text>
+  <text x="854" y="216" class="t">https  server.irb.local  :443</text>
+  <text x="854" y="236" class="m">http :80 binding also present</text>
+  <text x="854" y="256" class="m">(no redirect configured)</text>
+
+  <rect x="840" y="322" width="300" height="150" class="ok"/>
+  <text x="854" y="344" class="tag">CLIENT · BROWSER</text>
+  <text x="854" y="366" class="h">Microsoft Edge</text>
+  <text x="854" y="388" class="t">https://server.irb.local</text>
+  <text x="854" y="410" class="t" fill="#0a7d3e" font-weight="700">"Connection is secure"</text>
+  <text x="854" y="430" class="m">no certificate warning</text>
+  <text x="854" y="450" class="m">ran on the same host (domain member)</text>
+
+  <rect x="840" y="512" width="300" height="130" class="box"/>
+  <text x="854" y="534" class="tag">TRUST STORE</text>
+  <text x="854" y="556" class="h">LocalMachine\Root</text>
+  <text x="854" y="578" class="t">contains IRB-ADCS-RootCA</text>
+  <text x="854" y="598" class="m">certlm.msc · Trusted Root</text>
+  <text x="854" y="614" class="m">Certification Authorities</text>
+
+  <!-- arrows -->
+  <path d="M360,200 H446" class="ln" marker-end="url(#a)"/>
+  <text x="372" y="192" class="lbl">publishes</text>
+
+  <path d="M450,286 H410 V500 H364" class="ln" marker-end="url(#a)"/>
+  <text x="416" y="330" class="lbl" transform="rotate(90 416 330)">root cert imported</text>
+
+  <path d="M600,300 V388" class="ln" marker-end="url(#a)"/>
+  <text x="610" y="340" class="lbl">issues</text>
+  <text x="610" y="356" class="m">certreq -new/-submit</text>
+  <text x="610" y="372" class="m">/-accept</text>
+
+  <path d="M750,450 H780 V215 H836" class="ln" marker-end="url(#a)"/>
+  <text x="786" y="206" class="lbl">bound</text>
+
+  <path d="M210,642 V660 H800 V577 H836" class="ln" marker-end="url(#a)"/>
+  <text x="430" y="654" class="lbl">GPO applies → trusted root on domain computers</text>
+
+  <path d="M990,280 V318" class="lg" marker-end="url(#g)"/>
+  <text x="1000" y="304" class="lbl" fill="#0a7d3e">TLS :443</text>
+
+  <path d="M990,512 V476" class="lg" marker-end="url(#g)"/>
+  <text x="1000" y="498" class="lbl" fill="#0a7d3e">chain validates</text>
+
+  <!-- trust story -->
+  <text x="30" y="712" class="tag">TRUST CHAIN DEMONSTRATED</text>
+  <g font-size="11.5" font-weight="700" fill="#111">
+    <rect x="30"  y="724" width="168" height="40" class="pill"/><text x="42"  y="749">01 ENTERPRISE ROOT CA</text>
+    <rect x="224" y="724" width="168" height="40" class="pill"/><text x="236" y="749">02 DOMAIN TRUST</text>
+    <rect x="418" y="724" width="168" height="40" class="pill"/><text x="430" y="749">03 GPO DISTRIBUTION</text>
+    <rect x="612" y="724" width="168" height="40" class="pill"/><text x="624" y="749">04 MACHINE CERT</text>
+    <rect x="806" y="724" width="168" height="40" class="pill"/><text x="818" y="749">05 IIS TLS :443</text>
+    <rect x="1000" y="724" width="170" height="40" class="ok"/><text x="1012" y="749" fill="#0a7d3e">06 TRUSTED HTTPS</text>
+  </g>
+  <g class="ln">
+    <path d="M198,744 H220" marker-end="url(#a)"/><path d="M392,744 H414" marker-end="url(#a)"/>
+    <path d="M586,744 H608" marker-end="url(#a)"/><path d="M780,744 H802" marker-end="url(#a)"/>
+    <path d="M974,744 H996" marker-end="url(#a)"/>
+  </g>
+  <text x="30" y="800" class="m">Diagram drawn in 2026 from the original lab evidence. Browser verification was performed on server.irb.local itself;</text>
+  <text x="30" y="816" class="m">GPO delivery to a separate client machine was not part of the recorded evidence.</text>
+</svg>
