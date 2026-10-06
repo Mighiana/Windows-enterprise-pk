@@ -1,0 +1,25 @@
+# Never commit key material or exported certificates
+*.pfx
+*.p12
+*.pvk
+*.key
+*.pem
+*.cer
+*.crt
+*.req
+*.csr
+*.rsp
+*.inf
+
+# Original, unsanitized coursework material stays private
+original-lab/private/
+*.pdf
+
+# Generated reports
+pki-report*.json
+testResults*.xml
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
