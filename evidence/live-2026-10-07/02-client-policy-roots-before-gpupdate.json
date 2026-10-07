@@ -1,0 +1,14 @@
+{
+    "Utc":  "2026-10-07T10:10:04.0244800Z",
+    "Computer":  {
+                     "Name":  "CLIENT",
+                     "Domain":  "irb.local",
+                     "PartOfDomain":  true
+                 },
+    "PolicyRoots":  [
+
+                    ],
+    "Certificates":  [
+
+                     ]
+}

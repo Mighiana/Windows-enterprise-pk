@@ -1,0 +1,59 @@
+Updating policy...
+
+Computer Policy update has completed successfully.
+
+[PASS] TRUST    Root CA 'IRB-ADCS-RootCA' in LocalMachine\Root - Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091
+[PASS] TRUST    Root CA validity - Valid until 2036-10-07
+[PASS] TRUST    Root delivered by Group Policy - Physical stores: Group Policy, Enterprise (AD DS)
+[SKIP] GPO      GPO 'IRB Root CA Trust' - GroupPolicy module unavailable (install GPMC / RSAT)
+
+Summary: 3 PASS, 0 WARN, 0 FAIL, 1 SKIP
+
+Microsoft (R) Windows (R) Operating System Group Policy Result tool v2.0
+c Microsoft Corporation. All rights reserved.
+
+Created on ?10/?7/?2026 at 10:12:02 AM
+
+RSOP data for  on CLIENT : Logging Mode
+----------------------------------------
+
+OS Configuration:            Member Workstation
+OS Version:                  10.0.26100
+Site Name:                   Default-First-Site-Name
+Roaming Profile:
+Local Profile:
+Connected over a slow link?: No
+
+COMPUTER SETTINGS
+------------------
+
+    Last time Group Policy was applied: 10/7/2026 at 10:11:49 AM
+    Group Policy was applied from:      server.irb.local
+    Group Policy slow link threshold:   500 kbps
+    Domain Name:                        IRB
+    Domain Type:                        Windows 2008 or later
+
+    Applied Group Policy Objects
+    -----------------------------
+        Default Domain Policy
+        IRB Root CA Trust
+        IRB Machine Autoenrollment
+
+    The following GPOs were not applied because they were filtered out
+    -------------------------------------------------------------------
+        Local Group Policy
+            Filtering:  Not Applied (Empty)
+
+    The computer is a part of the following security groups
+    -------------------------------------------------------
+        BUILTIN\Administrators
+        Everyone
+        BUILTIN\Users
+        NT AUTHORITY\NETWORK
+        NT AUTHORITY\Authenticated Users
+        This Organization
+        CLIENT$
+        Domain Computers
+        Authentication authority asserted identity
+        System Mandatory Level
+        

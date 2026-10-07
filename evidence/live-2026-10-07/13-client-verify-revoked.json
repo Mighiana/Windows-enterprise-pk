@@ -1,0 +1,50 @@
+[
+    {
+        "Area":  "CLIENT",
+        "Check":  "Domain membership",
+        "Status":  "PASS",
+        "Detail":  "CLIENT joined to irb.local"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root CA \u0027IRB-ADCS-RootCA\u0027 in LocalMachine\\Root",
+        "Status":  "PASS",
+        "Detail":  "Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root CA validity",
+        "Status":  "PASS",
+        "Detail":  "Valid until 2036-10-07"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root delivered by Group Policy",
+        "Status":  "PASS",
+        "Detail":  "Physical stores: Group Policy, Enterprise (AD DS)"
+    },
+    {
+        "Area":  "GPO",
+        "Check":  "GPO \u0027IRB Root CA Trust\u0027",
+        "Status":  "SKIP",
+        "Detail":  "GroupPolicy module unavailable (install GPMC / RSAT)"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "Revocation status",
+        "Status":  "FAIL",
+        "Detail":  "Certificate revoked; chain: Revoked"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "TLS handshake https://server.irb.local:443",
+        "Status":  "FAIL",
+        "Detail":  "The remote certificate is invalid according to the validation procedure."
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "Client trusts certificate (no warning)",
+        "Status":  "FAIL",
+        "Detail":  "RemoteCertificateChainErrors; chain: Revoked"
+    }
+]

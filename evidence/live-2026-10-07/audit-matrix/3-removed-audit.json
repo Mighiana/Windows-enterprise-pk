@@ -1,0 +1,26 @@
+[
+    {
+        "Area":  "ADCS",
+        "Check":  "Read certificate templates (LDAP)",
+        "Status":  "PASS",
+        "Detail":  "34 templates, 1 published"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "Template exposure (ESC1-ESC4)",
+        "Status":  "PASS",
+        "Detail":  "34 templates reviewed; none enrollable or writable by low-privileged principals in a dangerous configuration"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2",
+        "Status":  "PASS",
+        "Detail":  "Not set (EditFlags 0x11014E)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC8 Web enrollment (/certsrv)",
+        "Status":  "PASS",
+        "Detail":  "AD CS Web Enrollment is not installed"
+    }
+]

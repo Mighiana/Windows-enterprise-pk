@@ -1,0 +1,10 @@
+[PASS] CLIENT   Domain membership - CLIENT joined to irb.local
+[PASS] TRUST    Root CA 'IRB-ADCS-RootCA' in LocalMachine\Root - Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091
+[PASS] TRUST    Root CA validity - Valid until 2036-10-07
+[PASS] TRUST    Root delivered by Group Policy - Physical stores: Group Policy, Enterprise (AD DS)
+[SKIP] GPO      GPO 'IRB Root CA Trust' - GroupPolicy module unavailable (install GPMC / RSAT)
+[FAIL] TLS      Revocation status - Certificate revoked; chain: Revoked
+[FAIL] TLS      TLS handshake https://server.irb.local:443 - The remote certificate is invalid according to the validation procedure.
+[FAIL] TLS      Client trusts certificate (no warning) - RemoteCertificateChainErrors; chain: Revoked
+
+Summary: 4 PASS, 0 WARN, 3 FAIL, 1 SKIP

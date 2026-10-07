@@ -1,0 +1,62 @@
+[
+    {
+        "Area":  "CLIENT",
+        "Check":  "Domain membership",
+        "Status":  "PASS",
+        "Detail":  "CLIENT joined to irb.local"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root CA \u0027IRB-ADCS-RootCA\u0027 in LocalMachine\\Root",
+        "Status":  "PASS",
+        "Detail":  "Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root CA validity",
+        "Status":  "PASS",
+        "Detail":  "Valid until 2036-10-07"
+    },
+    {
+        "Area":  "TRUST",
+        "Check":  "Root delivered by Group Policy",
+        "Status":  "PASS",
+        "Detail":  "Physical stores: Group Policy, Enterprise (AD DS)"
+    },
+    {
+        "Area":  "GPO",
+        "Check":  "GPO \u0027IRB Root CA Trust\u0027",
+        "Status":  "SKIP",
+        "Detail":  "GroupPolicy module unavailable (install GPMC / RSAT)"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "Revocation status",
+        "Status":  "PASS",
+        "Detail":  "CRL/OCSP checked during chain validation"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "Served certificate = IIS-bound certificate",
+        "Status":  "PASS",
+        "Detail":  "56A31812D80645B838F882F092F130DBC3D811C7"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "TLS handshake https://server.irb.local:443",
+        "Status":  "PASS",
+        "Detail":  "Tls13"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "Client trusts certificate (no warning)",
+        "Status":  "PASS",
+        "Detail":  "Name and chain validated by the Windows trust store"
+    },
+    {
+        "Area":  "TLS",
+        "Check":  "HTTPS response",
+        "Status":  "PASS",
+        "Detail":  "HTTP 200"
+    }
+]

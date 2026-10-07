@@ -1,7 +1,10 @@
 # Target production design (not implemented)
 
 > **Design only, 2026.** This page describes how the single-VM lab would be rebuilt for a real
-> enterprise. None of it was built in the original May 2026 lab or since. It exists to show the
+> enterprise. The offline root, issuing CA, OCSP and HSM were not built in the original May 2026 lab or since.
+> The [October 2026 live rebuild](live-lab.md) did build a few of the controls below on the single-tier
+> lab: hardened template, GPO auto-enrollment, confirmation on a separate client, HTTP CDP and a
+> revocation test. This page exists to show the
 > gap between a working lab trust chain and a defensible production PKI.
 
 ![Target production design: offline root, issuing CA, HTTP CDP + OCSP, GPO, hardened templates, monitoring](target-architecture.png)

@@ -1,0 +1,13 @@
+== Before
+
+    0: 1:C:\Windows\System32\CertSrv\CertEnroll\%3%8%9.crl
+    1: 2:http://server.irb.local/pki/%3%8%9.crl
+== After
+    0: 1:C:\Windows\System32\CertSrv\CertEnroll\%3%8%9.crl
+    1: 1:C:\pki\publication\%3%8%9.crl
+    2: 2:http://server.irb.local/pki/%3%8%9.crl
+CertUtil: -CRL command completed successfully.
+
+Name                LastWriteTimeUtc
+----                ----------------
+IRB-ADCS-RootCA.crl 10/7/2026 11:06:45 AM

@@ -6,7 +6,7 @@
 ![Group Policy](https://img.shields.io/badge/Group%20Policy-trust%20distribution-111?style=flat-square)
 ![IIS](https://img.shields.io/badge/IIS-HTTPS%20%3A443-111?style=flat-square)
 ![ATT&CK](https://img.shields.io/badge/ATT%26CK-T1649%20%C2%B7%20T1557%20%C2%B7%20T1553.004-111?style=flat-square)
-![Status](https://img.shields.io/badge/status-completed%20lab%20%2B%202026%20extension-0a7d3e?style=flat-square)
+![Status](https://img.shields.io/badge/status-original%20lab%20%2B%202026%20live%20rebuild-0a7d3e?style=flat-square)
 
 An Active Directory-integrated public key infrastructure built on Windows Server 2022.
 An AD CS **Enterprise Root CA** issues a machine certificate. **Group Policy** distributes
@@ -24,18 +24,23 @@ to `https://server.irb.local` with **no certificate warning**.
 > organize the documentation and provide a reproducible portfolio version of the environment.
 > Everything under [`scripts/`](scripts/), [`tests/`](tests/) and [`tools/`](tools/), plus the
 > [target design](docs/target-architecture.md), is a **2026 extension** and was **not** part of
-> the original lab. See [Repository provenance](#repository-provenance).
+> the original lab. In October 2026 the lab was also **rebuilt live on two VMs** (server + separate
+> domain client) to test what the original could not show: see [Live two-VM rebuild](#live-two-vm-rebuild-2026).
+> See [Repository provenance](#repository-provenance).
 
 ## What this project shows
 
 | Skill | Where |
 |---|---|
 | Building an AD-integrated PKI: AD DS, DNS, Enterprise Root CA, GPO trust, IIS TLS | [Original lab evidence](#active-directory-foundation) |
+| GPO trust delivery verified on a **separate** domain-joined Windows 11 client | [Live rebuild](docs/live-lab.md#1-gpo-trust-on-a-separate-client) |
+| Hardened certificate template + GPO **auto-enrollment** on server and client | [Live rebuild](docs/live-lab.md#2-hardened-template-and-gpo-auto-enrollment) |
+| Certificate lifecycle: issue → verify → **revoke** → publish CRL → detect → replace → recover | [Live rebuild](docs/live-lab.md#3-revocation-lifecycle) |
 | Explaining the trust chain end to end and what the evidence does **not** prove | [Validation evidence](#validation-evidence), [Limitations](#limitations) |
 | Read-only PowerShell verification of every link of the chain, with an HTML report | [`verify-pki.ps1`](scripts/verify-pki.ps1), [Verification report](#verification-report-2026) |
-| Offensive-aware AD CS review: ESC1-ESC4, ESC6, ESC8 mapped to MITRE ATT&CK | [`audit-adcs.ps1`](scripts/audit-adcs.ps1), [AD CS security audit](#ad-cs-security-audit-2026) |
+| Offensive-aware AD CS review: ESC1-ESC4, ESC6, ESC8 mapped to MITRE ATT&CK, proven on a live CA by a controlled insecure → remediated matrix | [`audit-adcs.ps1`](scripts/audit-adcs.ps1), [AD CS security audit](#ad-cs-security-audit-2026), [audit matrix](docs/live-lab.md#4-ad-cs-audit-matrix-detection-and-remediation) |
 | Production PKI design: offline root, issuing CA, CDP/OCSP, autoenrollment, HSM, monitoring | [Target design](#production-target-design-2026) |
-| Engineering hygiene: 44 Pester tests, PSScriptAnalyzer, CI on PowerShell 7 and 5.1, privacy-sanitized evidence | [Reproducibility](#reproducibility), [`original-lab/`](original-lab/README.md) |
+| Engineering hygiene: 56 Pester tests, PSScriptAnalyzer, CI on PowerShell 7 and 5.1, privacy-sanitized evidence | [Reproducibility](#reproducibility), [`original-lab/`](original-lab/README.md) |
 
 ## Contents
 
@@ -44,7 +49,7 @@ to `https://server.irb.local` with **no certificate warning**.
 [GPO trust](#trust-distribution-with-group-policy) · [Issuance](#certificate-request-and-issuance) ·
 [IIS](#iis-https-configuration) · [Chain](#trust-chain-verification) · [Evidence](#validation-evidence) ·
 [Security concepts](#security-concepts-demonstrated) · [AD CS audit](#ad-cs-security-audit-2026) ·
-[Report](#verification-report-2026) · [Target design](#production-target-design-2026) ·
+[Live rebuild](#live-two-vm-rebuild-2026) · [Report](#verification-report-2026) · [Target design](#production-target-design-2026) ·
 [Screenshots](#screenshots) · [Reproducibility](#reproducibility) · [Decisions](#lessons--technical-decisions) ·
 [Limitations](#limitations) · [Provenance](#repository-provenance)
 
@@ -237,9 +242,34 @@ The evidence chain from the original lab, and the 2026 automated check that re-t
 
 More detail: [`docs/security-model.md`](docs/security-model.md).
 
+## Live two-VM rebuild (2026)
+
+> **2026 live-lab extension**, run on 2026-10-07. Not the original May 2026 lab. Full write-up:
+> [`docs/live-lab.md`](docs/live-lab.md). Raw output: [`evidence/live-2026-10-07/`](evidence/live-2026-10-07/README.md).
+
+Two fresh evaluation VMs on a host-only network: **SERVER** (Windows Server 2022: DC, DNS,
+Enterprise Root CA, IIS) and **CLIENT** (Windows 11, domain member). The tooling in this repo was
+run on both.
+
+| Question the original lab left open | Result on the live lab |
+|---|---|
+| Does GPO deliver the root to a *separate* client? | Yes. Before joining: 4 FAIL (`UntrustedRoot`). After join + `gpupdate`: root in the client's **Group Policy** store, `IRB Root CA Trust` in its Resultant Set of Policy. |
+| Can a machine get its certificate automatically from a hardened template? | Yes. `PKILabServerTLS`: subject/SAN built from AD, Server Auth EKU only, non-exportable key, 90 days, Enroll/AutoEnroll for one group only, the only template on the CA. SERVER and CLIENT both auto-enrolled; no manual request. |
+| Does the tooling catch a revoked certificate? | Yes, once the client has the current CRL: **3 FAIL, `chain: Revoked`**. The test also showed two real ways a revoked certificate kept passing (CRL not published to the HTTP folder; client CRL cache). After replacement: client **11 PASS**, server 33 PASS / 2 WARN. |
+| Does `audit-adcs.ps1` detect real misconfigurations? | Yes. Controlled insecure state: **6 FAIL** (ESC1, 2, 3, 4, 6, 8). Remediated in place: 4 PASS. Test templates removed: 4 PASS. |
+
+| Client after revocation | Client final | AD CS audit, insecure lab state |
+|---|---|---|
+| <img src="docs/live/live-client-revoked.png" alt="Client verifier after revocation: 3 FAIL, chain Revoked"> | <img src="docs/live/live-client-final.png" alt="Client verifier final: 11 PASS"> | <img src="docs/live/live-audit-insecure.png" alt="AD CS audit on the live CA in a controlled insecure state: 6 FAIL"> |
+
+Reports re-rendered as HTML from the JSON recorded on the VMs. The insecure state was set up on
+purpose by [`Set-AdcsAuditTestMatrix.ps1`](scripts/lab/Set-AdcsAuditTestMatrix.ps1), which only runs
+with `-IsolatedLab` in `irb.local` and never requests a certificate. No exploitation tooling is included.
+
 ## AD CS security audit (2026)
 
-> 2026 extension. Not run against the original lab, which did not record its templates.
+> 2026 extension. Not run against the original lab, which did not record its templates. Run
+> against the live rebuild's CA in a [controlled detection/remediation matrix](docs/live-lab.md#4-ad-cs-audit-matrix-detection-and-remediation).
 
 A working PKI is not the same as a safe one. Misconfigured AD CS is one of the most common
 paths to domain compromise: a low-privileged user requests a certificate *as someone else* and
@@ -283,7 +313,8 @@ same evaluator functions the scripts use. It is **not** a recorded run against t
 
 > Design only. Not implemented.
 
-The lab proves the trust chain on one VM. A production PKI needs more: an offline root, a
+The live rebuild added a separate client, hardened auto-enrollment and a revocation test, but it is
+still one online root CA. A production PKI needs more: an offline root, a
 separate issuing CA, HSM-backed keys, reachable revocation, autoenrollment from hardened
 templates, and monitoring. [`docs/target-architecture.md`](docs/target-architecture.md) compares
 the lab with that target, gives a rollout order, and maps each control to a 2026 check.
@@ -321,10 +352,14 @@ undo, so those steps stay documented manual steps rather than scripts.
 | [`scripts/verify-trust.ps1`](scripts/verify-trust.ps1) | read-only | Root in `LocalMachine\Root`, *which* physical store delivered it (Group Policy / Enterprise / local), GPO exists and is linked |
 | [`scripts/verify-certificate.ps1`](scripts/verify-certificate.ps1) | read-only | Issuer, Subject, SAN, validity / expiry warning, private key present, Server Auth EKU, signature against the root |
 | [`scripts/verify-iis-tls.ps1`](scripts/verify-iis-tls.ps1) | read-only | IIS https binding + bound thumbprint, live TLS handshake validated by the Windows trust store, HTTP status |
+| [`scripts/verify-client.ps1`](scripts/verify-client.ps1) | read-only | From a domain **client**: membership, root delivered by Group Policy, GPO applied (GPMC or Resultant Set of Policy), `-TemplateName` auto-enrolled certificate, TLS to the server with `-CheckRevocation` |
+| [`scripts/lab/Set-AdcsAuditTestMatrix.ps1`](scripts/lab/Set-AdcsAuditTestMatrix.ps1) | changes AD CS config · isolated lab only | Test fixture for the audit: `Insecure` / `Remediated` / `Removed`. Requires `-IsolatedLab` and domain `irb.local`; never requests a certificate |
+| [`lab/live-rebuild/`](lab/live-rebuild/README.md) | lab build scripts | Host (QEMU/KVM, host-only network) and guest scripts used for the October 2026 two-VM rebuild |
 | [`scripts/reproduce/Install-LabRoles.ps1`](scripts/reproduce/Install-LabRoles.ps1) | changes system · `-WhatIf` · confirm | Installs role binaries only (no promotion) |
 | [`scripts/reproduce/New-ServerCertificateRequest.ps1`](scripts/reproduce/New-ServerCertificateRequest.ps1) | writes a file | `certreq` INF with Subject + SAN, non-exportable machine key |
 | [`scripts/reproduce/Set-IisHttpsBinding.ps1`](scripts/reproduce/Set-IisHttpsBinding.ps1) | changes system · `-WhatIf` · confirm | Creates/updates the IIS https binding; only accepts a currently valid certificate with private key, SAN, Server Auth EKU and the expected issuer |
 | [`tools/New-SampleReport.ps1`](tools/New-SampleReport.ps1) | writes a file | Renders `docs/sample-report.html` from fixture data |
+| [`tools/Render-LiveEvidence.ps1`](tools/Render-LiveEvidence.ps1) | writes files | Renders the recorded live-lab JSON as HTML reports |
 
 ```powershell
 # On server.irb.local, elevated Windows PowerShell 5.1 or PowerShell 7
@@ -345,12 +380,13 @@ Example console line format (illustrative, not a captured run):
 
 The full rebuild runbook (script steps and manual steps) is in [`docs/reproduce.md`](docs/reproduce.md).
 
-**How the tooling is tested.** `tests/PkiLab.Tests.ps1` (44 Pester 5 tests) generates root CAs and
+**How the tooling is tested.** `tests/PkiLab.Tests.ps1` (56 Pester 5 tests) generates root CAs and
 leaf certificates in memory (including a renewed root that reuses the CA name), uses fixture
 templates and ACLs for every ESC rule, and mocks Windows-only cmdlets. It also runs a live local TLS server
 to exercise the handshake check. CI runs PSScriptAnalyzer and Pester on PowerShell 7 (Linux,
-Windows) and Windows PowerShell 5.1. **The scripts have not yet been run against a rebuilt
-`irb.local` lab VM.** Treat them as tested tooling, not as recorded evidence from the original lab.
+Windows) and Windows PowerShell 5.1. The scripts were also run against the
+[live two-VM rebuild](docs/live-lab.md) (October 2026). That is evidence from the rebuild, not from
+the original May 2026 lab.
 
 ## Lessons / technical decisions
 
@@ -364,28 +400,38 @@ Windows) and Windows PowerShell 5.1. **The scripts have not yet been run against
 | **Static IP + local DNS** | AD DS and certificate names depend on stable name resolution. |
 | *(2026)* **Audit for abuse, not just function** | A PKI that issues valid certificates can still let any user impersonate a domain admin. The ESC audit checks for that. |
 | *(2026)* **Revocation is reported, not assumed** | Lab CAs often have no reachable CDP; the TLS check reports `Revocation status: SKIP` unless `-CheckRevocation` is used. |
+| *(2026, live)* **A PASS is only as fresh as the client's CRL** | The revocation test showed a revoked certificate passing twice: the CRL was not published where IIS serves it, then the client used its cached CRL. Hence `-CheckRevocation`, explicit CDP publication, and OCSP in the target design. |
+| *(2026, live)* **Least-privilege template, not a duplicated default** | Enroll/AutoEnroll granted to one group, subject from AD, one EKU, non-exportable key, and all other templates unpublished. `audit-adcs.ps1` passes on it. |
 | *(2026)* **Verification over provisioning** | Read-only checks are safe to run repeatedly. Automating DC promotion and CA setup is fragile and hard to undo. |
 
 ## Limitations
 
+**Original May 2026 lab** (unchanged; the live rebuild does not rewrite it):
+
 - Single lab VM: CA, DC, DNS, IIS and the browser all run on `server.irb.local`.
-- Single-tier PKI: no offline root, no subordinate/issuing CA hierarchy.
-- No HSM; CA keys are software keys on the CA host.
-- No OCSP responder or CRL/AIA design was assessed.
-- No certificate auto-enrollment; the certificate was requested manually with `certreq`.
-- No advanced certificate lifecycle automation (renewal, monitoring, revocation drills).
-- GPO trust delivery to a *separate* client was not demonstrated.
-- `http :80` stayed bound: no HTTP→HTTPS redirect, no HSTS, no TLS cipher/protocol hardening review.
+- No certificate template recorded; the certificate was requested manually with `certreq`.
+- GPO trust delivery to a *separate* client and revocation were not tested.
 - Two `server.irb.local` certificates are present in the Personal store (likely a repeated request). Only the IIS-bound one matters, but cleanup was not documented.
-- No production hardening assessment. **Not** intended as a production PKI architecture.
+
+Closed by the [October 2026 live rebuild](docs/live-lab.md): separate-client GPO trust,
+hardened template + auto-enrollment, revocation, live AD CS audit matrix.
+
+**Still open, in both:**
+
+- Single-tier PKI: online Enterprise Root CA issues directly. The offline root + issuing CA is [design only](docs/target-architecture.md).
+- No HSM; CA keys are software keys on the CA host.
+- No OCSP responder; revocation is a CRL over HTTP.
+- Auto-renewal configured but not observed (would need to wait until 7 days before the 90-day expiry).
+- `http :80` stayed bound: no HTTP→HTTPS redirect, no HSTS, no TLS cipher/protocol hardening review.
+- Evaluation VMs on an isolated network. **Not** a production PKI and not a production hardening assessment.
 
 ## Repository provenance
 
-| | Original lab | 2026 reproducibility extension |
-|---|---|---|
-| **When** | May 2026 (report dated 2026-05-25) | October 2026 |
-| **What** | Manual configuration in Windows Server 2022 GUI/CLI, documented in a PDF report with screenshots | This repository: docs, diagrams, sanitized screenshots, PowerShell verification + AD CS audit + helper scripts, HTML report, target design, tests, CI |
-| **Source code / Git history** | None. The lab had no repository, scripts or infrastructure-as-code. | First commit in this repository, October 2026. No backdated history. |
+| | Original lab | 2026 reproducibility extension | 2026 live rebuild |
+|---|---|---|---|
+| **When** | May 2026 (report dated 2026-05-25) | October 2026 | 2026-10-07 |
+| **What** | Manual configuration in Windows Server 2022 GUI/CLI, documented in a PDF report with screenshots | This repository: docs, diagrams, sanitized screenshots, PowerShell verification + AD CS audit + helper scripts, HTML report, target design, tests, CI | New server + client VMs built from evaluation media; separate-client trust, auto-enrollment, revocation and audit matrix, with raw output in [`evidence/live-2026-10-07/`](evidence/live-2026-10-07/README.md) |
+| **Source code / Git history** | None. The lab had no repository, scripts or infrastructure-as-code. | First commit in this repository, October 2026. No backdated history. | Scripts in [`lab/live-rebuild/`](lab/live-rebuild/README.md), committed with the evidence |
 
 The unsanitized original report is **not** published. See [`original-lab/README.md`](original-lab/README.md)
 for what was in it and how the public evidence was selected and sanitized.

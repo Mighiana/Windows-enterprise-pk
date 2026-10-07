@@ -1,0 +1,13 @@
+[PASS] CLIENT   Domain membership - CLIENT joined to irb.local
+[PASS] TRUST    Root CA 'IRB-ADCS-RootCA' in LocalMachine\Root - Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091
+[PASS] TRUST    Root CA validity - Valid until 2036-10-07
+[PASS] TRUST    Root delivered by Group Policy - Physical stores: Group Policy, Enterprise (AD DS)
+[PASS] GPO      GPO 'IRB Root CA Trust' applied to this computer - Resultant Set of Policy: Default Domain Policy, IRB Machine Autoenrollment, IRB Root CA Trust, Local Group Policy
+[PASS] ENROLL   Enrolled certificate from template 'PKILabServerTLS' - A817BC123AF55E61899F4FF35C858C25670B31CB; DNS=client.irb.local; expires 2027-01-05
+[PASS] TLS      Revocation status - CRL/OCSP checked during chain validation
+[PASS] TLS      Served certificate = IIS-bound certificate - 56A31812D80645B838F882F092F130DBC3D811C7
+[PASS] TLS      TLS handshake https://server.irb.local:443 - Tls13
+[PASS] TLS      Client trusts certificate (no warning) - Name and chain validated by the Windows trust store
+[PASS] TLS      HTTPS response - HTTP 200
+
+Summary: 11 PASS, 0 WARN, 0 FAIL, 0 SKIP

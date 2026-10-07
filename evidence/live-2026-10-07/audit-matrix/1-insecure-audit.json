@@ -1,0 +1,44 @@
+[
+    {
+        "Area":  "ADCS",
+        "Check":  "Read certificate templates (LDAP)",
+        "Status":  "PASS",
+        "Detail":  "38 templates, 5 published"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC1 template \u0027LabTest-ESC1\u0027",
+        "Status":  "FAIL",
+        "Detail":  "Requester supplies subject/SAN + authentication EKU; enrollable by IRB\\Domain Users; no approval; published on a CA. Impersonation of any user (ATT\u0026CK T1649)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC2 template \u0027LabTest-ESC2\u0027",
+        "Status":  "FAIL",
+        "Detail":  "Any Purpose / no EKU; enrollable by IRB\\Domain Users; no approval; published on a CA (ATT\u0026CK T1649)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC3 template \u0027LabTest-ESC3\u0027",
+        "Status":  "FAIL",
+        "Detail":  "Certificate Request Agent EKU; enrollable by IRB\\Domain Users; enroll on behalf of others; published on a CA (ATT\u0026CK T1649)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC4 template \u0027LabTest-ESC4\u0027",
+        "Status":  "FAIL",
+        "Detail":  "NT AUTHORITY\\Authenticated Users can modify the template ACL/settings; published on a CA (ATT\u0026CK T1649)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC6 EDITF_ATTRIBUTESUBJECTALTNAME2",
+        "Status":  "FAIL",
+        "Detail":  "CA honours requester-supplied SANs on every template. Fix: certutil -setreg policy\\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2 (ATT\u0026CK T1649)"
+    },
+    {
+        "Area":  "ADCS",
+        "Check":  "ESC8 Web enrollment (/certsrv)",
+        "Status":  "FAIL",
+        "Detail":  "/certsrv is reachable over HTTP: NTLM relay to the CA can mint certificates. Require HTTPS + Extended Protection (ATT\u0026CK T1557, T1649)"
+    }
+]

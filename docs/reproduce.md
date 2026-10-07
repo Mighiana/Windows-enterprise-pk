@@ -108,3 +108,16 @@ Exit code `0` = no FAIL, `1` = at least one FAIL, `2` = not running on Windows.
 
 Both scripts only read LDAP, the registry, certificate stores and IIS configuration. Generated
 reports are git-ignored.
+
+## Two-VM rebuild (server + domain client)
+
+> **2026 LIVE-LAB EXTENSION.** The steps above rebuild the original single-VM lab. The October 2026
+> live rebuild went further: a separate Windows 11 domain client, a hardened auto-enrollment
+> template, a revocation test and the AD CS audit matrix. Its host and guest scripts, in run order,
+> are in [`lab/live-rebuild/`](../lab/live-rebuild/README.md). Results: [`live-lab.md`](live-lab.md).
+
+On the client, after it has joined `irb.local` and applied policy:
+
+```powershell
+.\scripts\verify-client.ps1 -TemplateName PKILabServerTLS -CheckRevocation
+```

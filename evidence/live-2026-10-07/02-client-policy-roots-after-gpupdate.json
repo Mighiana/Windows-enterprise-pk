@@ -1,0 +1,16 @@
+{
+    "Utc":  "2026-10-07T10:11:50.3166960Z",
+    "Computer":  {
+                     "Name":  "CLIENT",
+                     "Domain":  "irb.local",
+                     "PartOfDomain":  true
+                 },
+    "PolicyRoots":  [
+                        {
+                            "PSChildName":  "C7EE25D36178A3955CC6DA9B464EE3FA26492091"
+                        }
+                    ],
+    "Certificates":  [
+
+                     ]
+}

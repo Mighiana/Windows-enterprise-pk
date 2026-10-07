@@ -1,0 +1,39 @@
+Windows Enterprise PKI lab verification - server.irb.local (2026-10-07 11:09:24Z)
+
+[PASS] DOMAIN   Operating system - Microsoft Windows Server 2022 Standard Evaluation
+[PASS] DOMAIN   Role installed: AD DS - AD-Domain-Services
+[PASS] DOMAIN   Role installed: AD CS - ADCS-Cert-Authority
+[PASS] DOMAIN   Role installed: DNS - DNS
+[PASS] DOMAIN   Role installed: IIS - Web-Server
+[PASS] DOMAIN   Domain membership - irb.local
+[PASS] DOMAIN   Domain controller role - DomainRole=5
+[PASS] DNS      A record for server.irb.local - 192.168.77.10
+[PASS] DNS      Static IPv4 address - 192.168.77.10 (Manual)
+[PASS] CA       Certificate Services (CertSvc) - Running
+[PASS] CA       Active CA name - IRB-ADCS-RootCA
+[PASS] CA       CA type - Enterprise Root
+[PASS] TRUST    Root CA 'IRB-ADCS-RootCA' in LocalMachine\Root - Thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091
+[PASS] TRUST    Root CA validity - Valid until 2036-10-07
+[PASS] TRUST    Root delivered by Group Policy - Physical stores: Group Policy, Enterprise (AD DS), Local machine
+[PASS] GPO      GPO 'IRB Root CA Trust' exists - Status AllSettingsEnabled
+[PASS] GPO      Linked to irb.local - Link enabled, enforced=False
+[WARN] CERT     Duplicate server certificates - 2 certificates for server.irb.local; evaluating 56A31812D80645B838F882F092F130DBC3D811C7
+[PASS] CERT     Server certificate for server.irb.local in LocalMachine\My - Thumbprint 56A31812D80645B838F882F092F130DBC3D811C7
+[PASS] CERT     Issued by enterprise CA - CN=IRB-ADCS-RootCA, DC=irb, DC=local
+[PASS] CERT     Subject CN matches FQDN - CN=server.irb.local
+[PASS] CERT     SAN contains DNS name - DNS=server.irb.local
+[PASS] CERT     Validity period - 2026-10-07 to 2027-01-05
+[PASS] CERT     Associated private key present - Key is not read or exported
+[PASS] CERT     Server Authentication EKU - 1.3.6.1.5.5.7.3.1
+[PASS] CERT     Signed by trusted root - Root thumbprint C7EE25D36178A3955CC6DA9B464EE3FA26492091
+[PASS] IIS      HTTPS binding on :443 (Default Web Site) - *:443:server.irb.local
+[PASS] IIS      Certificate bound to HTTPS binding - Thumbprint 56A31812D80645B838F882F092F130DBC3D811C7 (store MY)
+[WARN] IIS      Plain HTTP binding - *:80: still served over HTTP (no redirect/HSTS configured by this lab)
+[PASS] IIS      Bound certificate matches host name - server.irb.local
+[PASS] TLS      Revocation status - CRL/OCSP checked during chain validation
+[PASS] TLS      Served certificate = IIS-bound certificate - 56A31812D80645B838F882F092F130DBC3D811C7
+[PASS] TLS      TLS handshake https://server.irb.local:443 - Tls13
+[PASS] TLS      Client trusts certificate (no warning) - Name and chain validated by the Windows trust store
+[PASS] TLS      HTTPS response - HTTP 200
+
+Summary: 33 PASS, 2 WARN, 0 FAIL, 0 SKIP

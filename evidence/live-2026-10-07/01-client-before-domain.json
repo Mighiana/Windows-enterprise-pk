@@ -1,0 +1,24 @@
+{
+    "Utc":  "2026-10-07T09:59:37.4227312Z",
+    "OS":  {
+               "Caption":  "Microsoft Windows 11 Enterprise LTSC Evaluation",
+               "Version":  "10.0.26100",
+               "BuildNumber":  "26100"
+           },
+    "Computer":  {
+                     "Name":  "CLIENT",
+                     "Domain":  "WORKGROUP",
+                     "PartOfDomain":  false
+                 },
+    "Addresses":  [
+                      {
+                          "IPAddress":  "192.168.77.20"
+                      }
+                  ],
+    "PolicyRoots":  [
+
+                    ],
+    "MachineCertificates":  [
+
+                            ]
+}
