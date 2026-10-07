@@ -40,7 +40,7 @@ to `https://server.irb.local` with **no certificate warning**.
 | Read-only PowerShell verification of every link of the chain, with an HTML report | [`verify-pki.ps1`](scripts/verify-pki.ps1), [Verification report](#verification-report-2026) |
 | Offensive-aware AD CS review: ESC1-ESC4, ESC6, ESC8 mapped to MITRE ATT&CK, proven on a live CA by a controlled insecure → remediated matrix | [`audit-adcs.ps1`](scripts/audit-adcs.ps1), [AD CS security audit](#ad-cs-security-audit-2026), [audit matrix](docs/live-lab.md#4-ad-cs-audit-matrix-detection-and-remediation) |
 | Production PKI design: offline root, issuing CA, CDP/OCSP, autoenrollment, HSM, monitoring | [Target design](#production-target-design-2026) |
-| Engineering hygiene: 56 Pester tests, PSScriptAnalyzer, CI on PowerShell 7 and 5.1, privacy-sanitized evidence | [Reproducibility](#reproducibility), [`original-lab/`](original-lab/README.md) |
+| Engineering hygiene: 58 Pester tests, PSScriptAnalyzer, CI on PowerShell 7 and 5.1, privacy-sanitized evidence | [Reproducibility](#reproducibility), [`original-lab/`](original-lab/README.md) |
 
 ## Contents
 
@@ -380,7 +380,7 @@ Example console line format (illustrative, not a captured run):
 
 The full rebuild runbook (script steps and manual steps) is in [`docs/reproduce.md`](docs/reproduce.md).
 
-**How the tooling is tested.** `tests/PkiLab.Tests.ps1` (56 Pester 5 tests) generates root CAs and
+**How the tooling is tested.** `tests/PkiLab.Tests.ps1` (58 Pester 5 tests) generates root CAs and
 leaf certificates in memory (including a renewed root that reuses the CA name), uses fixture
 templates and ACLs for every ESC rule, and mocks Windows-only cmdlets. It also runs a live local TLS server
 to exercise the handshake check. CI runs PSScriptAnalyzer and Pester on PowerShell 7 (Linux,

@@ -9,7 +9,7 @@
 |---|---|
 | [`network.sh`](network.sh) | Host-only bridge `pkibr0` (192.168.77.1/24) + taps `pki-srv`, `pki-cli`. No NAT. |
 | [`provision.py`](provision.py) | Generates a random lab password, unattend files and bootstrap ISOs, creates disks. Writes only to `private/` (git-ignored). Expects the ISOs in `media/` (git-ignored). |
-| [`start-vm.py`](start-vm.py) | Boots `server` or `client` (client gets a software TPM for Windows 11) |
+| [`start-vm.py`](start-vm.py) | Boots `server` or `client` (client gets a software TPM for Windows 11). Pass `--install` only for the first boot: it attaches the Windows ISO and the bootstrap ISO, which contains the lab password. Later boots mount neither. |
 | [`qmp.py`](qmp.py) | QEMU monitor helper (screenshots, key presses during setup) |
 | [`await-winrm.py`](await-winrm.py), [`await-domain.py`](await-domain.py) | Wait for WinRM / AD to come up |
 | [`remote.py`](remote.py) | Runs a PowerShell file on a VM over WinRM (`pywinrm`), using the private credentials |

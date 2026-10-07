@@ -9,7 +9,8 @@
 
     This is a detection test fixture, not an attack tool: it never requests, issues or uses a
     certificate. It only changes configuration on the CA it runs on, and refuses to run unless
-    the domain matches -LabDomain and -IsolatedLab is passed.
+    -IsolatedLab is passed and it is running on the lab CA itself: domain irb.local and active
+    CA IRB-ADCS-RootCA. The lab identity is fixed in the script, not taken from parameters.
 
       -State Insecure    create LabTest-ESC1..ESC4 templates (one weakness each), publish them,
                          set EDITF_ATTRIBUTESUBJECTALTNAME2 (ESC6) and install AD CS Web
@@ -27,17 +28,19 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)] [ValidateSet('Insecure', 'Remediated', 'Removed')] [string] $State,
-    [Parameter(Mandatory)] [switch] $IsolatedLab,
-    [string] $LabDomain = 'irb.local',
-    [string] $CaName = 'IRB-ADCS-RootCA'
+    [Parameter(Mandatory)] [switch] $IsolatedLab
 )
+
+$LabDomain = 'irb.local'
+$CaName = 'IRB-ADCS-RootCA'
 
 $ErrorActionPreference = 'Stop'
 Import-Module ActiveDirectory
 
 $domain = Get-ADDomain
-if (-not $IsolatedLab -or $domain.DNSRoot -ne $LabDomain) {
-    throw "Refusing to change AD CS configuration outside the isolated lab domain '$LabDomain'."
+$activeCa = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\CertSvc\Configuration' -Name Active -ErrorAction SilentlyContinue).Active
+if (-not $IsolatedLab -or $domain.DNSRoot -ne $LabDomain -or $activeCa -ne $CaName) {
+    throw "Refusing to change AD CS configuration: this only runs on CA '$CaName' in the isolated lab domain '$LabDomain'."
 }
 
 $domainSid = $domain.DomainSID.Value

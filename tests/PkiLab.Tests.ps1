@@ -188,9 +188,9 @@ Describe 'Invoke-LabTrustCheck on a member client without GPMC (RSoP fallback)' 
         Get-Status $r "GPO 'IRB Root CA Trust' applied to this computer" | Should -Be 'PASS'
         $r | Where-Object Status -EQ 'SKIP' | Should -BeNullOrEmpty
     }
-    It 'warns when the GPO has not been applied' {
+    It 'fails when RSoP is readable but the GPO is not applied' {
         Mock -ModuleName PkiLab Get-LabAppliedGpoName { , [string[]]@('Default Domain Policy') }
-        Get-Status (Invoke-LabTrustCheck -CaName 'IRB-ADCS-RootCA' -DomainName 'irb.local' -GpoName 'IRB Root CA Trust') "GPO 'IRB Root CA Trust' applied to this computer" | Should -Be 'WARN'
+        Get-Status (Invoke-LabTrustCheck -CaName 'IRB-ADCS-RootCA' -DomainName 'irb.local' -GpoName 'IRB Root CA Trust') "GPO 'IRB Root CA Trust' applied to this computer" | Should -Be 'FAIL'
     }
     It 'skips (does not pass) when RSoP cannot be read' {
         Mock -ModuleName PkiLab Get-LabAppliedGpoName { $null }
@@ -203,7 +203,7 @@ Describe 'Test-LabEnrolledCertificate (auto-enrollment)' {
         $script:Check = "Enrolled certificate from template 'PKILabServerTLS'"
         $script:ClientLeaf = New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local')
         function Invoke-Enrolled([object[]] $Certs) {
-            Test-LabEnrolledCertificate -Certificates $Certs -TemplateName 'PKILabServerTLS' -Fqdn 'client.irb.local' -CaName 'IRB-ADCS-RootCA'
+            Test-LabEnrolledCertificate -Certificates $Certs -TemplateName 'PKILabServerTLS' -Fqdn 'client.irb.local' -CaName 'IRB-ADCS-RootCA' -TrustedRoots @($Root)
         }
     }
     BeforeEach {
@@ -232,6 +232,16 @@ Describe 'Test-LabEnrolledCertificate (auto-enrollment)' {
     It 'fails when the certificate lacks a private key or the machine DNS name' {
         Get-Status (Invoke-Enrolled @((New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local') -NoKey))) $Check | Should -Be 'FAIL'
         (Invoke-Enrolled @($Leaf) | Where-Object Check -EQ $Check).Detail | Should -Match 'SAN does not contain client.irb.local'
+    }
+    It 'rejects a certificate from a different CA that reuses the trusted CA name' {
+        $foreign = New-TestLeaf -Root (New-TestRoot) -Cn 'client.irb.local' -San @('client.irb.local')
+        (Invoke-Enrolled @($foreign) | Where-Object Check -EQ $Check).Detail | Should -Match 'not signed by a trusted'
+    }
+    It 'passes when an older certificate is usable even though a newer one is not' {
+        $newer = New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local') -DaysAfter 900 -NoKey
+        $r = Invoke-Enrolled @($newer, $ClientLeaf)
+        Get-Status $r $Check | Should -Be 'PASS'
+        ($r | Where-Object Check -EQ $Check).Detail | Should -Match $ClientLeaf.Thumbprint
     }
 }
 

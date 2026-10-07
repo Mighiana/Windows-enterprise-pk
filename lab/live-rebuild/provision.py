@@ -9,6 +9,7 @@ from xml.sax.saxutils import escape
 BASE = Path(__file__).parent
 PRIVATE = BASE / 'private'
 secret_file = PRIVATE / 'credentials.json'
+PRIVATE.mkdir(parents=True, exist_ok=True)
 if not secret_file.exists():
     secret_file.write_text(json.dumps({'password': secrets.token_urlsafe(28) + '!aA1'}))
     secret_file.chmod(0o600)

@@ -36,7 +36,7 @@ $results = @(
     Invoke-LabTrustCheck -CaName $CaName -DomainName $DomainName -GpoName $GpoName
     if ($TemplateName) {
         $fqdn = ('{0}.{1}' -f $env:COMPUTERNAME, $DomainName).ToLowerInvariant()
-        Test-LabEnrolledCertificate -Certificates @(Get-LabStoreCertificate -StoreName My) -TemplateName $TemplateName -Fqdn $fqdn -CaName $CaName
+        Test-LabEnrolledCertificate -Certificates @(Get-LabStoreCertificate -StoreName My) -TemplateName $TemplateName -Fqdn $fqdn -CaName $CaName -TrustedRoots @(Find-LabRootCertificate -Certificates @(Get-LabStoreCertificate -StoreName Root) -CaName $CaName)
     }
     $hs = Invoke-LabTlsHandshake -HostName $ServerFqdn -Port $Port -CheckRevocation:$CheckRevocation
     Test-LabTlsResult -Handshake $hs -Url "https://${ServerFqdn}:$Port" -ExpectedThumbprint $ExpectedThumbprint

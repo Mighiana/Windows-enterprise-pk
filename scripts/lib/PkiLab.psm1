@@ -399,7 +399,7 @@ function Invoke-LabTrustCheck {
         } elseif (@($applied) -contains $GpoName) {
             New-LabCheckResult 'GPO' "GPO '$GpoName' applied to this computer" 'PASS' ('Resultant Set of Policy: ' + (@($applied) -join ', '))
         } else {
-            New-LabCheckResult 'GPO' "GPO '$GpoName' applied to this computer" 'WARN' ('Not in Resultant Set of Policy (run gpupdate /force). Applied: ' + $(if (@($applied).Count) { @($applied) -join ', ' } else { 'none' }))
+            New-LabCheckResult 'GPO' "GPO '$GpoName' applied to this computer" 'FAIL' ('Not in Resultant Set of Policy (run gpupdate /force). Applied: ' + $(if (@($applied).Count) { @($applied) -join ', ' } else { 'none' }))
         }
         return
     }
@@ -457,6 +457,7 @@ function Test-LabEnrolledCertificate {
         [Parameter(Mandatory)] [string] $TemplateName,
         [Parameter(Mandatory)] [string] $Fqdn,
         [Parameter(Mandatory)] [string] $CaName,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $TrustedRoots,
         [datetime] $Now = (Get-Date)
     )
     $check = "Enrolled certificate from template '$TemplateName'"
@@ -469,23 +470,29 @@ function Test-LabEnrolledCertificate {
         New-LabCheckResult 'ENROLL' $check 'FAIL' 'None in LocalMachine\My (auto-enrollment not run yet, or this computer is not permitted to enroll)'
         return
     }
-    $cert = @($candidates | Where-Object { $_.NotBefore -le $Now -and $_.NotAfter -gt $Now } | Select-Object -First 1)
-    if ($cert.Count -eq 0) {
+    $current = @($candidates | Where-Object { $_.NotBefore -le $Now -and $_.NotAfter -gt $Now })
+    if ($current.Count -eq 0) {
         New-LabCheckResult 'ENROLL' $check 'FAIL' ('{0} certificate(s), none currently valid' -f $candidates.Count)
         return
     }
-    $cert = $cert[0]
-    $problems = @(
-        if ((Get-LabCommonName $cert.Issuer) -ne $CaName) { "issuer is $($cert.Issuer)" }
-        if (@(Get-LabSanDnsName $cert) -notcontains $Fqdn) { "SAN does not contain $Fqdn" }
-        if (-not (Test-LabHasServerAuthEku $cert)) { 'no Server Authentication EKU' }
-        if (-not $cert.HasPrivateKey) { 'no associated private key' }
-    )
-    if ($problems.Count) {
-        New-LabCheckResult 'ENROLL' $check 'FAIL' ('{0}: {1}' -f $cert.Thumbprint, ($problems -join '; '))
-    } else {
-        New-LabCheckResult 'ENROLL' $check 'PASS' ('{0}; DNS={1}; expires {2:yyyy-MM-dd}' -f $cert.Thumbprint, $Fqdn, $cert.NotAfter)
+    # Any one usable certificate is enough; otherwise report the latest-expiring one's problems.
+    $firstFailure = $null
+    foreach ($cert in $current) {
+        $roots = @($TrustedRoots | Where-Object { $_.Subject -eq $cert.Issuer })
+        $problems = @(
+            if ((Get-LabCommonName $cert.Issuer) -ne $CaName) { "issuer is $($cert.Issuer)" }
+            elseif (-not @($roots | Where-Object { Test-LabSignedBy -Certificate $cert -Issuer $_ }).Count) { "not signed by a trusted '$CaName' root" }
+            if (@(Get-LabSanDnsName $cert) -notcontains $Fqdn) { "SAN does not contain $Fqdn" }
+            if (-not (Test-LabHasServerAuthEku $cert)) { 'no Server Authentication EKU' }
+            if (-not $cert.HasPrivateKey) { 'no associated private key' }
+        )
+        if ($problems.Count -eq 0) {
+            New-LabCheckResult 'ENROLL' $check 'PASS' ('{0}; DNS={1}; expires {2:yyyy-MM-dd}' -f $cert.Thumbprint, $Fqdn, $cert.NotAfter)
+            return
+        }
+        if ($null -eq $firstFailure) { $firstFailure = '{0}: {1}' -f $cert.Thumbprint, ($problems -join '; ') }
     }
+    New-LabCheckResult 'ENROLL' $check 'FAIL' $firstFailure
 }
 
 function Get-LabIisHttpsBinding {
