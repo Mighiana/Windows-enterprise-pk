@@ -1,0 +1,8 @@
+[FAIL] CLIENT   Domain membership - Expected irb.local; observed WORKGROUP
+[FAIL] TRUST    Root CA 'IRB-ADCS-RootCA' in LocalMachine\Root - Not found in the trusted root store
+[SKIP] GPO      GPO 'IRB Root CA Trust' - GroupPolicy module unavailable (install GPMC / RSAT)
+[SKIP] TLS      Revocation status - Not checked; a revoked certificate could still pass. Rerun with -CheckRevocation
+[FAIL] TLS      TLS handshake https://server.irb.local:443 - The remote certificate is invalid according to the validation procedure.
+[FAIL] TLS      Client trusts certificate (no warning) - RemoteCertificateChainErrors; chain: UntrustedRoot
+
+Summary: 0 PASS, 0 WARN, 4 FAIL, 2 SKIP

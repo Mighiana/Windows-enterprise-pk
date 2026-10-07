@@ -1,0 +1,12 @@
+        Last Update: Oct  7 10:56:45 2026 GMT
+        Next Update: Oct  8 13:40:45 2026 GMT
+        CRL extensions:
+--
+            X509v3 CRL Number:
+                6
+--
+    Serial Number: 340000000301396D601B6B58FF000000000003
+        Revocation Date: Oct  7 11:05:45 2026 GMT
+--
+                Key Compromise
+    Signature Algorithm: sha256WithRSAEncryption

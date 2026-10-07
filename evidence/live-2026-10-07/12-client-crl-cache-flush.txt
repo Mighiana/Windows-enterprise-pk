@@ -1,0 +1,6 @@
+== Cached CRL objects before flush
+
+http://server.irb.local/pki/IRB-ADCS-RootCA.crl
+WinINet Cache entries deleted: 0
+WinHttp Cache entries deleted: 4
+CertUtil: -setreg command completed successfully.

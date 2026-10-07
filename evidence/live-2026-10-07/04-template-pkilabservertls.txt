@@ -1,0 +1,22 @@
+msPKI-Certificate-Name-Flag : 0x18000000 (SUBJECT_REQUIRE_DNS_AS_CN + SUBJECT_ALT_REQUIRE_DNS: built from AD; ENROLLEE_SUPPLIES_SUBJECT not set)
+msPKI-Enrollment-Flag       : 0x20 (CT_FLAG_AUTO_ENROLLMENT)
+msPKI-Private-Key-Flag      : 0x100 (CT_FLAG_EXPORTABLE_KEY 0x10 not set = private key not exportable; 0x100 = legacy CSP)
+msPKI-Minimal-Key-Size      : 2048
+msPKI-RA-Signature          : 0
+pKIExtendedKeyUsage         : 1.3.6.1.5.5.7.3.1
+Validity / renewal overlap  : 90 days / 7 days
+
+ACL (inheritance disabled: True)
+
+Identity                                Rights ExtendedRight
+--------                                ------ -------------
+NT AUTHORITY\Authenticated Users   GenericRead
+NT AUTHORITY\SYSTEM                 GenericAll
+IRB\Domain Admins                   GenericAll
+IRB\Enterprise Admins               GenericAll
+IRB\PKITLSAutoenroll               GenericRead
+IRB\PKITLSAutoenroll             ExtendedRight Certificate-AutoEnrollment
+IRB\PKITLSAutoenroll             ExtendedRight Certificate-Enrollment
+
+PKITLSAutoenroll members: CLIENT, SERVER
+Published on CA: PKILabServerTLS

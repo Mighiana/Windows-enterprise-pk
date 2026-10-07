@@ -1,0 +1,10 @@
+>     Applied Group Policy Objects
+      -----------------------------
+          Default Domain Policy
+          IRB Root CA Trust
+          IRB Machine Autoenrollment
+
+      The following GPOs were not applied because they were filtered out
+
+Subject: CN=IRB-ADCS-RootCA, DC=irb, DC=local
+Cert Hash(sha1): c7ee25d36178a3955cc6da9b464ee3fa26492091

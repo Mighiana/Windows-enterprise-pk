@@ -1,0 +1,5 @@
+== Cached CRL objects before flush
+
+WinINet Cache entries deleted: 0
+WinHttp Cache entries deleted: 3
+CertUtil: -setreg command completed successfully.

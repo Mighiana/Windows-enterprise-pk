@@ -40,14 +40,17 @@ checked by the 2026 `verify-pki.ps1`:
 
 ## Not covered (by design of the lab)
 
-| Area | Status |
-|---|---|
-| Offline root + issuing subordinate CA | Not implemented (single-tier) |
-| HSM-protected CA keys | Not implemented |
-| CRL distribution / OCSP / AIA design | Not assessed; the verifier skips revocation unless `-CheckRevocation` is used |
-| Auto-enrollment, renewal and expiry monitoring | Not implemented |
-| HTTP → HTTPS redirect, HSTS, cipher-suite and protocol hardening | Not implemented (`http :80` remained bound) |
-| CA role separation, auditing, template ACL review (e.g. ESC-style misconfigurations) | Not assessed |
+Status in the original May 2026 lab, and after the [October 2026 live rebuild](live-lab.md).
+
+| Area | Original lab | Live rebuild (2026) |
+|---|---|---|
+| Offline root + issuing subordinate CA | Not implemented (single-tier) | Not implemented ([design only](target-architecture.md)) |
+| HSM-protected CA keys | Not implemented | Not implemented |
+| CRL distribution / OCSP / AIA | Not assessed | HTTP CDP/AIA configured; revocation tested end to end ([section 3](live-lab.md#3-revocation-lifecycle)). No OCSP. |
+| Auto-enrollment, renewal and expiry monitoring | Not implemented | Hardened template + GPO auto-enrollment on server and client ([section 2](live-lab.md#2-hardened-template-and-gpo-auto-enrollment)). Renewal configured, not observed. No expiry monitoring. |
+| HTTP → HTTPS redirect, HSTS, cipher-suite and protocol hardening | Not implemented (`http :80` remained bound) | Not implemented |
+| Template ACL review (ESC-style misconfigurations) | Not assessed | `audit-adcs.ps1` run on the live CA, including a controlled insecure → remediated matrix ([section 4](live-lab.md#4-ad-cs-audit-matrix-detection-and-remediation)) |
+| CA role separation, CA auditing | Not assessed | Not assessed (CA still on the DC) |
 
 ## ATT&CK mapping (2026 extension)
 

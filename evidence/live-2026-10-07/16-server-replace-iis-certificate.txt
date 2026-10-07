@@ -1,0 +1,7 @@
+== Enroll replacement from PKILabServerTLS
+
+RequestId = 5
+    The requested certificate has been issued.
+New: 56A31812D80645B838F882F092F130DBC3D811C7 serial 340000000504895290C0B9C5B9000000000005
+== netsh binding
+Removed revoked certificate 2180CD9AD13BE22A65E48CD1F802FC4059DF6161 from LocalMachine\My

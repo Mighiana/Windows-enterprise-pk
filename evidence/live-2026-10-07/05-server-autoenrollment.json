@@ -1,0 +1,29 @@
+{
+    "Utc":  "2026-10-07T10:26:11.4102496Z",
+    "Computer":  {
+                     "Name":  "SERVER",
+                     "Domain":  "irb.local",
+                     "PartOfDomain":  true
+                 },
+    "AutoenrollmentPolicy":  7,
+    "Certificates":  [
+                         {
+                             "Subject":  "CN=server.irb.local",
+                             "Issuer":  "CN=IRB-ADCS-RootCA, DC=irb, DC=local",
+                             "Thumbprint":  "2180CD9AD13BE22A65E48CD1F802FC4059DF6161",
+                             "SerialNumber":  "340000000301396D601B6B58FF000000000003",
+                             "NotBefore":  "2026-10-07T10:06:33.0000000Z",
+                             "NotAfter":  "2027-01-05T10:06:33.0000000Z",
+                             "HasPrivateKey":  true,
+                             "PrivateKeyExportable":  false,
+                             "PublicKeyBits":  2048,
+                             "SAN":  [
+                                         "server.irb.local"
+                                     ],
+                             "EKU":  [
+                                         "1.3.6.1.5.5.7.3.1"
+                                     ],
+                             "Template":  "Template=PKILabServerTLS(1.3.6.1.4.1.311.21.8.10369455.6586011.13453226.12543386.584154.225.124374912.595815160), Major Version Number=100, Minor Version Number=1"
+                         }
+                     ]
+}
