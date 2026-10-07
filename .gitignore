@@ -27,3 +27,7 @@ Thumbs.db
 # Generated HTML reports
 pki-report*.html
 adcs-audit*.html
+
+# Python bytecode
+__pycache__/
+*.pyc
