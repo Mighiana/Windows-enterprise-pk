@@ -176,6 +176,65 @@ Describe 'Invoke-LabTrustCheck' {
     }
 }
 
+Describe 'Invoke-LabTrustCheck on a member client without GPMC (RSoP fallback)' {
+    BeforeEach {
+        Mock -ModuleName PkiLab Get-LabStoreCertificate { $Root }
+        Mock -ModuleName PkiLab Test-LabRegistryKey { $Path -like '*Policies*' }
+        Mock -ModuleName PkiLab Get-Command { $null } -ParameterFilter { $Name -eq 'Get-GPO' }
+    }
+    It 'passes when the GPO is in the computer Resultant Set of Policy' {
+        Mock -ModuleName PkiLab Get-LabAppliedGpoName { , [string[]]@('Default Domain Policy', 'IRB Root CA Trust') }
+        $r = Invoke-LabTrustCheck -CaName 'IRB-ADCS-RootCA' -DomainName 'irb.local' -GpoName 'IRB Root CA Trust'
+        Get-Status $r "GPO 'IRB Root CA Trust' applied to this computer" | Should -Be 'PASS'
+        $r | Where-Object Status -EQ 'SKIP' | Should -BeNullOrEmpty
+    }
+    It 'warns when the GPO has not been applied' {
+        Mock -ModuleName PkiLab Get-LabAppliedGpoName { , [string[]]@('Default Domain Policy') }
+        Get-Status (Invoke-LabTrustCheck -CaName 'IRB-ADCS-RootCA' -DomainName 'irb.local' -GpoName 'IRB Root CA Trust') "GPO 'IRB Root CA Trust' applied to this computer" | Should -Be 'WARN'
+    }
+    It 'skips (does not pass) when RSoP cannot be read' {
+        Mock -ModuleName PkiLab Get-LabAppliedGpoName { $null }
+        Get-Status (Invoke-LabTrustCheck -CaName 'IRB-ADCS-RootCA' -DomainName 'irb.local' -GpoName 'IRB Root CA Trust') "GPO 'IRB Root CA Trust'" | Should -Be 'SKIP'
+    }
+}
+
+Describe 'Test-LabEnrolledCertificate (auto-enrollment)' {
+    BeforeAll {
+        $script:Check = "Enrolled certificate from template 'PKILabServerTLS'"
+        $script:ClientLeaf = New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local')
+        function Invoke-Enrolled([object[]] $Certs) {
+            Test-LabEnrolledCertificate -Certificates $Certs -TemplateName 'PKILabServerTLS' -Fqdn 'client.irb.local' -CaName 'IRB-ADCS-RootCA'
+        }
+    }
+    BeforeEach {
+        Mock -ModuleName PkiLab Get-LabCertificateTemplateInfo { 'Template=PKILabServerTLS(1.3.6.1.4.1.311.21.8.1.2), Major Version Number=100, Minor Version Number=1' }
+    }
+    It 'passes for a valid template certificate with key, SAN and Server Authentication EKU' {
+        $r = Invoke-Enrolled @($ClientLeaf)
+        Get-Status $r $Check | Should -Be 'PASS'
+        ($r | Where-Object Check -EQ $Check).Detail | Should -Match $ClientLeaf.Thumbprint
+    }
+    It 'fails when no certificate from the template exists' {
+        Get-Status (Invoke-Enrolled @()) $Check | Should -Be 'FAIL'
+    }
+    It 'does not accept a certificate from a different template' {
+        Mock -ModuleName PkiLab Get-LabCertificateTemplateInfo { 'Template=Machine(1.3.6.1.4.1.311.21.8.9), Major Version Number=5' }
+        Get-Status (Invoke-Enrolled @($ClientLeaf)) $Check | Should -Be 'FAIL'
+    }
+    It 'does not accept a template whose name only starts with the expected name' {
+        Mock -ModuleName PkiLab Get-LabCertificateTemplateInfo { 'Template=PKILabServerTLSv2(1.3.6.1.4.1.311.21.8.3), Major Version Number=100' }
+        Get-Status (Invoke-Enrolled @($ClientLeaf)) $Check | Should -Be 'FAIL'
+    }
+    It 'fails when the only template certificate has expired' {
+        $expired = New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local') -DaysBefore -100 -DaysAfter -1
+        (Invoke-Enrolled @($expired) | Where-Object Check -EQ $Check).Detail | Should -Match 'none currently valid'
+    }
+    It 'fails when the certificate lacks a private key or the machine DNS name' {
+        Get-Status (Invoke-Enrolled @((New-TestLeaf -Root $Root -Cn 'client.irb.local' -San @('client.irb.local') -NoKey))) $Check | Should -Be 'FAIL'
+        (Invoke-Enrolled @($Leaf) | Where-Object Check -EQ $Check).Detail | Should -Match 'SAN does not contain client.irb.local'
+    }
+}
+
 Describe 'Invoke-LabCaCheck' {
     It 'passes for a running Enterprise Root CA with the expected name' {
         Mock -ModuleName PkiLab Get-Service { [pscustomobject]@{ Name = 'CertSvc'; Status = 'Running' } }
@@ -203,6 +262,26 @@ Describe 'Test-LabTlsResult' {
     It 'does not report revocation as passed when it was not checked' {
         $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'None'; ChainStatus = @(); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null; RevocationChecked = $false }
         Get-Status (Test-LabTlsResult -Handshake $hs -Url 'u') 'Revocation status' | Should -Be 'SKIP'
+    }
+    It 'reports revoked certificates even when TLS validation rejects the handshake' {
+        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'RemoteCertificateChainErrors'; ChainStatus = @('Revoked'); Thumbprint = 'AB'; Protocol = $null; HttpStatus = $null; Error = 'certificate rejected'; RevocationChecked = $true }
+        $r = Test-LabTlsResult -Handshake $hs -Url 'u' -ExpectedThumbprint 'AB'
+        Get-Status $r 'Revocation status' | Should -Be 'FAIL'
+        ($r | Where-Object Check -eq 'Revocation status').Detail | Should -Match 'revoked'
+        Get-Status $r 'Client trusts certificate (no warning)' | Should -Be 'FAIL'
+        Get-Status $r 'Served certificate = IIS-bound certificate' | Should -Be 'PASS'
+    }
+    It 'does not claim a fingerprint match when the peer certificate was unavailable' {
+        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = $null; ChainStatus = @(); Thumbprint = $null; Protocol = $null; HttpStatus = $null; Error = 'connection closed'; RevocationChecked = $true }
+        $r = Test-LabTlsResult -Handshake $hs -Url 'u' -ExpectedThumbprint 'AB'
+        Get-Status $r 'Served certificate = IIS-bound certificate' | Should -Be 'SKIP'
+        Get-Status $r 'Revocation status' | Should -Be 'SKIP'
+    }
+    It 'does not confuse an unreachable CRL with a revoked certificate' {
+        $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'RemoteCertificateChainErrors'; ChainStatus = @('RevocationStatusUnknown, OfflineRevocation'); Thumbprint = 'AB'; Protocol = $null; HttpStatus = $null; Error = 'certificate rejected'; RevocationChecked = $true }
+        $r = Test-LabTlsResult -Handshake $hs -Url 'u'
+        Get-Status $r 'Revocation status' | Should -Be 'FAIL'
+        ($r | Where-Object Check -eq 'Revocation status').Detail | Should -Match 'could not be established'
     }
     It 'fails an untrusted chain or name mismatch and reports why' {
         $hs = [pscustomobject]@{ Connected = $true; PolicyErrors = 'RemoteCertificateChainErrors'; ChainStatus = @('UntrustedRoot'); Thumbprint = 'AB'; Protocol = 'Tls12'; HttpStatus = 200; Error = $null }
@@ -253,17 +332,17 @@ srv.socket = ctx.wrap_socket(srv.socket, server_side=True); srv.serve_forever()
         if ($Server) { Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue }
         if ($TmpDir) { Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue }
     }
-    It 'completes the handshake, captures the served thumbprint and reports the untrusted test root' {
+    It 'rejects the untrusted test root without sending an HTTP request and retains validation details' {
         $hs = Invoke-LabTlsHandshake -HostName 'localhost' -Port $TlsPort
-        $hs.Error | Should -BeNullOrEmpty
+        $hs.Error | Should -Not -BeNullOrEmpty
         $hs.Connected | Should -BeTrue
-        $hs.Protocol | Should -Match 'Tls1[23]'
+        $hs.Protocol | Should -BeNullOrEmpty
         $hs.Thumbprint | Should -Be $TlsLeaf.Thumbprint
         $hs.PolicyErrors | Should -Match 'RemoteCertificateChainErrors'
-        $hs.HttpStatus | Should -Be 200
+        $hs.HttpStatus | Should -BeNullOrEmpty
         $r = Test-LabTlsResult -Handshake $hs -Url "https://localhost:$TlsPort" -ExpectedThumbprint $TlsLeaf.Thumbprint
         Get-Status $r 'Client trusts certificate (no warning)' | Should -Be 'FAIL'
-        Get-Status $r 'Served certificate = IIS-bound certificate' | Should -Be 'PASS'
+        Get-Status $r "TLS handshake https://localhost:$TlsPort" | Should -Be 'FAIL'
     }
     It 'reports a closed port without throwing' {
         $hs = Invoke-LabTlsHandshake -HostName '127.0.0.1' -Port 1 -TimeoutMs 1000

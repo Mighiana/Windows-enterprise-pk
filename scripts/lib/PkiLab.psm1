@@ -15,6 +15,8 @@ Set-StrictMode -Version 2.0
 
 $script:OidServerAuth = '1.3.6.1.5.5.7.3.1'
 $script:OidSan        = '2.5.29.17'
+$script:OidTemplateV2 = '1.3.6.1.4.1.311.21.7'
+$script:OidTemplateV1 = '1.3.6.1.4.1.311.20.2'
 
 # ---------------------------------------------------------------------------
 # Result model
@@ -390,7 +392,15 @@ function Invoke-LabTrustCheck {
     }
 
     if (-not (Get-Command -Name Get-GPO -ErrorAction SilentlyContinue)) {
-        New-LabCheckResult 'GPO' "GPO '$GpoName'" 'SKIP' 'GroupPolicy module unavailable (install GPMC / RSAT)'
+        # Member clients usually lack GPMC; fall back to this computer's Resultant Set of Policy.
+        $applied = Get-LabAppliedGpoName
+        if ($null -eq $applied) {
+            New-LabCheckResult 'GPO' "GPO '$GpoName'" 'SKIP' 'GroupPolicy module unavailable and RSoP not readable (run elevated, or install GPMC / RSAT)'
+        } elseif (@($applied) -contains $GpoName) {
+            New-LabCheckResult 'GPO' "GPO '$GpoName' applied to this computer" 'PASS' ('Resultant Set of Policy: ' + (@($applied) -join ', '))
+        } else {
+            New-LabCheckResult 'GPO' "GPO '$GpoName' applied to this computer" 'WARN' ('Not in Resultant Set of Policy (run gpupdate /force). Applied: ' + $(if (@($applied).Count) { @($applied) -join ', ' } else { 'none' }))
+        }
         return
     }
     try {
@@ -411,6 +421,71 @@ function Invoke-LabTrustCheck {
         elseif ($link.Enabled) { New-LabCheckResult 'GPO' "Linked to $DomainName" 'PASS' ('Link enabled, enforced={0}' -f $link.Enforced) }
         else { New-LabCheckResult 'GPO' "Linked to $DomainName" 'FAIL' 'Link exists but is disabled' }
     } catch { New-LabCheckResult 'GPO' "Linked to $DomainName" 'SKIP' $_.Exception.Message }
+}
+
+function Get-LabAppliedGpoName {
+    <# Names of the GPOs in this computer's RSoP (logging mode). $null when RSoP cannot be read. #>
+    [OutputType([string[]])]
+    param()
+    try {
+        $gpos = @(Get-CimInstance -Namespace 'root/rsop/computer' -ClassName RSOP_GPO -ErrorAction Stop)
+        , [string[]]@($gpos | Where-Object { $_.Name } | ForEach-Object { $_.Name } | Sort-Object -Unique)
+    } catch {
+        return $null
+    }
+}
+
+function Get-LabCertificateTemplateInfo {
+    <# Text of the certificate-template extension (v2 template information, else v1 template name). #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)] [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate)
+    foreach ($oid in $script:OidTemplateV2, $script:OidTemplateV1) {
+        $ext = $Certificate.Extensions | Where-Object { $_.Oid.Value -eq $oid } | Select-Object -First 1
+        if ($null -ne $ext) { return $ext.Format($false) }
+    }
+    return $null
+}
+
+function Test-LabEnrolledCertificate {
+    <#
+        Verifies that this machine holds a usable certificate issued from a specific template,
+        e.g. one obtained through GPO auto-enrollment. Pure evaluator apart from the template lookup.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Certificates,
+        [Parameter(Mandatory)] [string] $TemplateName,
+        [Parameter(Mandatory)] [string] $Fqdn,
+        [Parameter(Mandatory)] [string] $CaName,
+        [datetime] $Now = (Get-Date)
+    )
+    $check = "Enrolled certificate from template '$TemplateName'"
+    $pattern = '(^|[=\s])' + [regex]::Escape($TemplateName) + '(\(|$|,|\s)'
+    $candidates = @($Certificates | Where-Object {
+        $info = Get-LabCertificateTemplateInfo -Certificate $_
+        $null -ne $info -and $info -match $pattern
+    } | Sort-Object NotAfter -Descending)
+    if ($candidates.Count -eq 0) {
+        New-LabCheckResult 'ENROLL' $check 'FAIL' 'None in LocalMachine\My (auto-enrollment not run yet, or this computer is not permitted to enroll)'
+        return
+    }
+    $cert = @($candidates | Where-Object { $_.NotBefore -le $Now -and $_.NotAfter -gt $Now } | Select-Object -First 1)
+    if ($cert.Count -eq 0) {
+        New-LabCheckResult 'ENROLL' $check 'FAIL' ('{0} certificate(s), none currently valid' -f $candidates.Count)
+        return
+    }
+    $cert = $cert[0]
+    $problems = @(
+        if ((Get-LabCommonName $cert.Issuer) -ne $CaName) { "issuer is $($cert.Issuer)" }
+        if (@(Get-LabSanDnsName $cert) -notcontains $Fqdn) { "SAN does not contain $Fqdn" }
+        if (-not (Test-LabHasServerAuthEku $cert)) { 'no Server Authentication EKU' }
+        if (-not $cert.HasPrivateKey) { 'no associated private key' }
+    )
+    if ($problems.Count) {
+        New-LabCheckResult 'ENROLL' $check 'FAIL' ('{0}: {1}' -f $cert.Thumbprint, ($problems -join '; '))
+    } else {
+        New-LabCheckResult 'ENROLL' $check 'PASS' ('{0}; DNS={1}; expires {2:yyyy-MM-dd}' -f $cert.Thumbprint, $Fqdn, $cert.NotAfter)
+    }
 }
 
 function Get-LabIisHttpsBinding {
@@ -464,19 +539,19 @@ function Invoke-LabTlsHandshake {
     $r = [ordered]@{ Connected = $false; PolicyErrors = $null; ChainStatus = @(); Thumbprint = $null; Protocol = $null; HttpStatus = $null; Error = $null; RevocationChecked = [bool]$CheckRevocation }
     $state = @{ Errors = $null; Chain = @(); Cert = $null }
     $client = New-Object System.Net.Sockets.TcpClient
+    $ssl = $null
     try {
         $ar = $client.BeginConnect($HostName, $Port, $null, $null)
         if (-not $ar.AsyncWaitHandle.WaitOne($TimeoutMs)) { throw "TCP connect to ${HostName}:$Port timed out" }
         $client.EndConnect($ar)
         $r.Connected = $true
 
-        # Observe the platform's verdict but let the handshake finish so we can report details.
         $callback = {
             param($source, $certificate, $chain, $errors)
             $state.Errors = $errors
             if ($null -ne $chain) { $state.Chain = @($chain.ChainStatus | ForEach-Object { "$($_.Status)" }) }
             if ($null -ne $certificate) { $state.Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($certificate) }
-            return $true
+            return ($errors -eq [System.Net.Security.SslPolicyErrors]::None)
         }.GetNewClosure()
 
         $ssl = New-Object System.Net.Security.SslStream($client.GetStream(), $false, [System.Net.Security.RemoteCertificateValidationCallback]$callback)
@@ -499,6 +574,10 @@ function Invoke-LabTlsHandshake {
         $r.Error = $e.Message
         if ($null -ne $state.Errors) { $r.PolicyErrors = "$($state.Errors)" }
     } finally {
+        if ($null -ne $state.Errors) { $r.PolicyErrors = "$($state.Errors)" }
+        $r.ChainStatus = $state.Chain
+        if ($state.Cert) { $r.Thumbprint = $state.Cert.Thumbprint; $state.Cert.Dispose() }
+        if ($ssl) { $ssl.Dispose() }
         $client.Close()
     }
     [pscustomobject]$r
@@ -515,8 +594,29 @@ function Test-LabTlsResult {
         New-LabCheckResult $a "TCP connect $Url" 'FAIL' $Handshake.Error
         return
     }
+    $checked = $Handshake.PSObject.Properties['RevocationChecked'] -and $Handshake.RevocationChecked
+    $chain = @($Handshake.ChainStatus | Where-Object { $_ -ne 'NoError' })
+    if (-not $checked) {
+        New-LabCheckResult $a 'Revocation status' 'SKIP' 'Not checked; a revoked certificate could still pass. Rerun with -CheckRevocation'
+    } elseif ($chain -match 'Revoked') {
+        New-LabCheckResult $a 'Revocation status' 'FAIL' ('Certificate revoked; chain: ' + ($chain -join ', '))
+    } elseif ($chain -match 'RevocationStatusUnknown|OfflineRevocation') {
+        New-LabCheckResult $a 'Revocation status' 'FAIL' ('Revocation could not be established; chain: ' + ($chain -join ', '))
+    } elseif ($Handshake.PolicyErrors -eq 'None' -and $Handshake.Protocol) {
+        New-LabCheckResult $a 'Revocation status' 'PASS' 'CRL/OCSP checked during chain validation'
+    } else {
+        New-LabCheckResult $a 'Revocation status' 'SKIP' 'Certificate validation did not complete; no revocation assurance'
+    }
+    if ($ExpectedThumbprint) {
+        if (-not $Handshake.Thumbprint) { New-LabCheckResult $a 'Served certificate = IIS-bound certificate' 'SKIP' 'Peer certificate unavailable' }
+        elseif ($Handshake.Thumbprint -eq $ExpectedThumbprint) { New-LabCheckResult $a 'Served certificate = IIS-bound certificate' 'PASS' $Handshake.Thumbprint }
+        else { New-LabCheckResult $a 'Served certificate = IIS-bound certificate' 'FAIL' ('Served {0}, bound {1}' -f $Handshake.Thumbprint, $ExpectedThumbprint) }
+    }
     if ($null -eq $Handshake.Protocol) {
         New-LabCheckResult $a "TLS handshake $Url" 'FAIL' $Handshake.Error
+        if ($Handshake.PolicyErrors) {
+            New-LabCheckResult $a 'Client trusts certificate (no warning)' 'FAIL' ('{0}; chain: {1}' -f $Handshake.PolicyErrors, ($chain -join ', '))
+        }
         return
     }
     New-LabCheckResult $a "TLS handshake $Url" 'PASS' $Handshake.Protocol
@@ -526,18 +626,10 @@ function Test-LabTlsResult {
 
     if ($Handshake.PolicyErrors -eq 'None') {
         New-LabCheckResult $a 'Client trusts certificate (no warning)' 'PASS' 'Name and chain validated by the Windows trust store'
-        if ($Handshake.PSObject.Properties['RevocationChecked'] -and $Handshake.RevocationChecked) { New-LabCheckResult $a 'Revocation status' 'PASS' 'CRL/OCSP checked during chain validation' }
-        else { New-LabCheckResult $a 'Revocation status' 'SKIP' 'Not checked; a revoked certificate would still pass. Rerun with -CheckRevocation' }
     } else {
-        $chain = @($Handshake.ChainStatus | Where-Object { $_ -ne 'NoError' })
         $detail = $Handshake.PolicyErrors
         if ($chain.Count) { $detail = '{0}; chain: {1}' -f $detail, ($chain -join ', ') }
         New-LabCheckResult $a 'Client trusts certificate (no warning)' 'FAIL' $detail
-    }
-
-    if ($ExpectedThumbprint) {
-        if ($Handshake.Thumbprint -eq $ExpectedThumbprint) { New-LabCheckResult $a 'Served certificate = IIS-bound certificate' 'PASS' $Handshake.Thumbprint }
-        else { New-LabCheckResult $a 'Served certificate = IIS-bound certificate' 'FAIL' ('Served {0}, bound {1}' -f $Handshake.Thumbprint, $ExpectedThumbprint) }
     }
 
     if ($null -eq $Handshake.HttpStatus) { New-LabCheckResult $a 'HTTPS response' 'WARN' "No HTTP status line ($($Handshake.Error))" }
@@ -831,6 +923,7 @@ Export-ModuleMember -Function @(
     'Get-LabCommonName', 'Get-LabSanDnsName', 'Test-LabHasServerAuthEku', 'Test-LabSignedBy',
     'Find-LabRootCertificate', 'Find-LabServerCertificate', 'Test-LabServerCertificate', 'Test-LabRootCertificate',
     'Invoke-LabDomainCheck', 'Invoke-LabCaCheck', 'Invoke-LabTrustCheck', 'Invoke-LabCertificateCheck',
+    'Get-LabAppliedGpoName', 'Get-LabCertificateTemplateInfo', 'Test-LabEnrolledCertificate',
     'Get-LabIisHttpsBinding', 'Get-LabBoundThumbprint', 'Invoke-LabTlsHandshake', 'Test-LabTlsResult', 'Invoke-LabIisTlsCheck',
     'Test-LabLowPrivilegedSid', 'Get-LabTemplateExposure', 'Test-LabTemplateRisk', 'Test-LabCaConfigRisk',
     'Get-LabAdcsTemplate', 'Get-LabCaEditFlag', 'Get-LabWebEnrollmentState', 'Invoke-LabAdcsAudit', 'ConvertTo-LabHtmlReport'
