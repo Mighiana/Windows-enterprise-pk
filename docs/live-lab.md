@@ -27,7 +27,7 @@ host-only bridge 192.168.77.0/24 (no NAT, no internet)
 │     Template: PKILabServerTLS (the only template published on the CA)
 │
 └── CLIENT  192.168.77.20  Windows 11 Enterprise LTSC (evaluation), domain member
-      Gets root trust and its certificate by Group Policy only, then validates https://server.irb.local
+      Root trust + certificate via Group Policy only; validates https://server.irb.local
 ```
 
 Both VMs were installed unattended from Microsoft evaluation ISOs (hashes:
