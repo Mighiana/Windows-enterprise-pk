@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <# Run on SERVER. Enrolls a replacement from PKILabServerTLS, binds it to the IIS https binding and
    removes the revoked certificate from LocalMachine\My. Changes nothing unless exactly one new,
-   valid certificate from the template was issued by this enrollment. #>
+   valid certificate from the template, signed by the trusted lab root, was issued by this enrollment. #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory)] [string] $RevokedThumbprint,
@@ -22,6 +22,8 @@ $exit = $LASTEXITCODE
 $output | Select-String 'Installed|Request|Status|Thumbprint'
 if ($exit -ne 0) { throw "certreq -enroll failed with exit code $exit; binding left unchanged." }
 
+$roots = @(Find-LabRootCertificate -Certificates @(Get-LabStoreCertificate -StoreName Root) -CaName $CaName)
+if ($roots.Count -eq 0) { throw "Root CA '$CaName' not in LocalMachine\Root; binding left unchanged." }
 $pattern = '(^|[=\s])' + [regex]::Escape($TemplateName) + '(\(|$|,|\s)'
 $now = Get-Date
 $new = @(Get-ChildItem Cert:\LocalMachine\My | Where-Object {
@@ -30,7 +32,8 @@ $new = @(Get-ChildItem Cert:\LocalMachine\My | Where-Object {
     (Get-LabCertificateTemplateInfo -Certificate $_) -match $pattern -and
     (Get-LabCommonName $_.Issuer) -eq $CaName -and
     @(Get-LabSanDnsName $_) -contains $Fqdn -and
-    (Test-LabHasServerAuthEku $_)
+    (Test-LabHasServerAuthEku $_) -and
+    $(foreach ($r in $roots) { if ($_.Issuer -eq $r.Subject -and (Test-LabSignedBy -Certificate $_ -Issuer $r)) { $true; break } })
 })
 if ($new.Count -ne 1) { throw "Expected exactly one newly issued $TemplateName certificate for $Fqdn, found $($new.Count); binding left unchanged." }
 $new = $new[0]
